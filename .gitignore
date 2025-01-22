@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+env/
+.DS_Store
+.env
+.csv
+*.parquet
+*.log
+*.cfg
+*.csh
+*.fish
+*.ps1
