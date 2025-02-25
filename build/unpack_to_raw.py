@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def upload(input_dir,endpoint_url):
-    """Combine les fichiers et les téléverse dans le bucket raw."""
+    """téléverse le dataset dans le bucket raw."""
     # Initialiser le client S3
     s3_client = boto3.client('s3', endpoint_url=endpoint_url)
     for filename in os.listdir(input_dir):
@@ -48,4 +48,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
