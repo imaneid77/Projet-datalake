@@ -3,80 +3,109 @@ import boto3
 import argparse
 import pandas as pd
 from pathlib import Path
+import kagglehub       
 
-def download_tweet_data(output_dir):
-    """Télécharge les données Tweet sentiment et les organise dans les sous dossiers train et test."""
+def download_and_combine_kaggle_dataset(output_dir: str) -> str:
+    """
+    1) Télécharge le dataset 'wjia26/big-tech-companies-tweet-sentiment' depuis Kaggle
+    2) Recherche tous les .csv (même s’ils sont dans des sous-dossiers)
+    3) Combine le tout en un seul DataFrame
+    4) Sauvegarde le CSV final dans `output_dir`
     
-    # Créer les répertoires nécessaires
+    Retourne : chemin absolu du fichier CSV combiné
+    """
+    print("=== Téléchargement du dataset depuis Kaggle ===")
+    local_kaggle_path = kagglehub.dataset_download("wjia26/big-tech-companies-tweet-sentiment")
+    print(f"Dataset téléchargé dans : {local_kaggle_path}\n")
+
+    # Lister tous les .csv
+    print("=== Recherche des fichiers CSV ===")
+    csv_files = []
+    for root, dirs, files in os.walk(local_kaggle_path):
+        for file in files:
+            if file.endswith(".csv"):
+                csv_path = os.path.join(root, file)
+                csv_files.append(csv_path)
+                print(f"  - Trouvé : {csv_path}")
+
+    if not csv_files:
+        raise FileNotFoundError("Aucun fichier CSV n'a été trouvé dans le dataset Kaggle.")
+
+    # Charger et concaténer les CSV
+    print("\n=== Chargement et concaténation des CSV ===")
+    dfs = []
+    for csv_path in csv_files:
+        try:
+            df = pd.read_csv(csv_path)
+            dfs.append(df)
+            print(f"  - OK : {csv_path} ({df.shape[0]} lignes)")
+        except Exception as e:
+            print(f"  - ERREUR lors de la lecture : {csv_path} => {e}")
+
+    combined_df = pd.concat(dfs, ignore_index=True)
+    print(f"\nNombre total de lignes combinées : {combined_df.shape[0]}")
+
+    # Sauvegarder le DataFrame combiné
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    for split in ['train', 'test']:
-        Path(os.path.join(output_dir, split)).mkdir(exist_ok=True)
-    
-    # Télécharger le dataset
-    path_data : r"local_dataset\Bigtech - 12-07-2020 till 19-09-2020.csv"      # relative_path = local_dataset\Bigtech - 12-07-2020 till 19-09-2020.csv
-    # path_data : r"local_dataset"
-    dataset = pd.read_csv(path_data)
-    
-    # Sauvegarder chaque split dans son dossier respectif
-    for split in dataset.keys():
-        output_file = os.path.join(output_dir, split, f'tweet-sentiment-{split}.csv')       # f'tweet-sentiment-{split}.txt'
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for item in dataset[split]['text']:             # Spliter selonnnn les lignes !!!
-                if item.strip():  # Éviter les lignes vides
-                    f.write(item + '\n')
+    combined_csv_path = os.path.join(output_dir, "bigtech_combined.csv")
+    combined_df.to_csv(combined_csv_path, index=False, encoding="utf-8")
+    print(f"Fichier combiné sauvegardé dans : {combined_csv_path}\n")
+
+    return combined_csv_path
 
 
+def upload_to_s3(file_path: str, endpoint_url: str, bucket: str = "raw", key: str = None) -> None:
+    """
+    Téléverse un fichier local vers un bucket S3 (ou LocalStack).
+    Par défaut : bucket = "raw", key = nom du fichier si non spécifié.
+    """
+    if key is None:
+        key = os.path.basename(file_path)
 
-def combine_and_upload(input_dir, endpoint_url):
-    """Combine les fichiers et les téléverse dans le bucket raw."""
-    # Initialiser le client S3
-    s3_client = boto3.client('s3', endpoint_url=endpoint_url)
-    
-    # Combiner tous les fichiers
-    combined_content = []
-    for split in ['train', 'test']:
-        split_dir = os.path.join(input_dir, split)
-        for filename in os.listdir(split_dir):
-            file_path = os.path.join(split_dir, filename)
-            with open(file_path, 'r', encoding='utf-8') as f:
-                combined_content.extend(f.readlines())
-    
-    # Sauvegarder le fichier combiné temporairement
-    combined_file = os.path.join(input_dir, 'tweet-sentiment-tmp.csv')
-    with open(combined_file, 'w', encoding='utf-8') as f:
-        f.writelines(combined_content)
-    
-    # Téléverser vers S3
+    print(f"=== Téléversement du fichier vers S3 (bucket={bucket}) ===")
+    print(f"  endpoint_url : {endpoint_url}")
+    print(f"  file_path    : {file_path}")
+    print(f"  key          : {key}")
+
+    s3_client = boto3.client("s3", endpoint_url=endpoint_url)
+
     try:
+        # S’assurer que le bucket existe (à créer manuellement si besoin)
         s3_client.upload_file(
-            combined_file,
-            'raw',
-            'tweet-sentiment-tmp.csv'
-        )
-        print(f"Fichier téléversé avec succès dans s3://raw/tweet-sentiment-tmp.csv")
+            Filename=file_path, 
+            Bucket=bucket, 
+            Key=key)
+        print(f"Fichier téléversé avec succès : s3://{bucket}/{key}\n")
     except Exception as e:
         print(f"Erreur lors du téléversement : {e}")
-    
-    # Nettoyer le fichier temporaire
-    os.remove(combined_file)
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Télécharge et traite les données tweet-sentiment')
-    parser.add_argument('--output-dir', type=str, default='local_dataset/raw',
-                        help='Répertoire de sortie pour les données')
-    parser.add_argument('--endpoint-url', type=str, default='http://localhost:4566',
-                        help='URL du endpoint S3 (LocalStack)')
-    
+    parser = argparse.ArgumentParser(description="Script d’insertion des données Big Tech Twitter dans la couche RAW")
+    parser.add_argument("--output-dir", type=str, default="local_dataset/raw",
+                        help="Répertoire local où stocker le CSV combiné")
+    parser.add_argument("--endpoint-url", type=str, default="http://localhost:4566",
+                        help="URL du endpoint S3 (LocalStack ou AWS)")
+    parser.add_argument("--upload-s3", action="store_true",
+                        help="Si présent, on envoie aussi le fichier dans un bucket S3/LocalStack")
+    parser.add_argument("--bucket", type=str, default="raw",
+                        help="Nom du bucket S3 (par défaut 'raw')")
+    parser.add_argument("--key", type=str, default=None,
+                        help="Chemin/nom de l’objet dans S3 (par défaut = nom du fichier)")
+
     args = parser.parse_args()
-    
-    print("Téléchargement des données...")
-    download_tweet_data(args.output_dir)
-    print("Données téléchargées et organisées.")
-    
-    print("Combinaison et téléversement des fichiers des dossiers train et test...")
-    combine_and_upload(args.output_dir, args.endpoint_url)
-    print("Traitement terminé.")
+
+    # 1) Télécharger et combiner les CSV
+    combined_csv_path = download_and_combine_kaggle_dataset(args.output_dir)
+
+    # 2) (Optionnel) Uploader sur S3/LocalStack
+    if args.upload_s3:
+        upload_to_s3(
+            file_path=combined_csv_path,
+            endpoint_url=args.endpoint_url,
+            bucket=args.bucket,
+            key=args.key
+        )
 
 if __name__ == "__main__":
     main()
