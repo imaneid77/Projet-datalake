@@ -1,14 +1,20 @@
-import argparse
+import re
 import boto3
-import mysql.connector
-from mysql.connector import Error
+import argparse
 import pandas as pd
+import mysql.connector
 from io import StringIO
+from pathlib import Path
+from mysql.connector import Error
+
 
 def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv"):
-    """Récupère les données depuis le bucket raw.
+    """
+    Récupère les données depuis le bucket raw.
     params : 
-    - file_name = bigtech_combined.csv dans le cas ou l'on exécute unpack_to_raw_v"""
+    - file_name = bigtech_combined.csv dans le cas ou l'on exécute unpack_to_raw_v
+    sinon file_name = Bigtech - 12-07-2020 till 19-09-2020.csv
+    """
     try:
         s3_client = boto3.client('s3', endpoint_url=endpoint_url)
         response = s3_client.get_object(Bucket=bucket_name, Key=file_name)
@@ -17,3 +23,107 @@ def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv
     except Exception as e:
         print(f"Erreur lors de la récupération des données depuis S3: {e}")
         return None
+    
+
+#  Extraction des hashtags depuis la colonne 'text'
+def extract_hashtags(text):
+    return re.findall(r"#\w+", text)
+    
+
+def clean_data(content):
+    """
+    Nettoie les données (suppression des doublons, des lignes vides etc.)
+    Diverses transformations seront appliquer pour garantir un formattage 
+    et une standardisation des données.
+    """
+    df = pd.read_csv(StringIO(content))
+    print(f"df initial : {df}, colonnes : {df.columns}")
+    
+    # Suppression des lignes vides dans la colonne 'text'
+    df = df.dropna(subset=['text'])
+    print(f"Lignes vides : {df['text'].isna()}")
+    
+    # Suppression des doublons et réinitialisation de l’index
+    df_no_duplicated = df.drop_duplicates().reset_index(drop=True)
+    print(f"Doublons : {df_no_duplicated['text'].duplicated()}")
+    
+    # Suppression des lignes avec valeurs manquantes dans 'location'
+    df_no_duplicated = df_no_duplicated.dropna(subset=['location'])
+    print(f"Valeurs manquantes dans 'location' : {df_no_duplicated['location'].isna()}")
+
+    # Extraction des hashtags depuis la colonne 'text' 
+    # On conserve le symbole '#' pour les repérer  
+    df_w_keyword =  df_no_duplicated.copy()
+    df_w_keyword['hashtags_list'] = df_w_keyword['text'].apply(lambda x: extract_hashtags(x) if isinstance(x, str) else [])
+    max_tags = df_w_keyword['hashtags_list'].apply(len).max()
+
+    # Création de colonnes distinctes pour chaque hashtag (une colonne par hashtag)
+    for i in range(max_tags):
+        df_w_keyword[f'keyword_{i+1}'] = df_w_keyword['hashtags_list'].apply(lambda tags: tags[i] if len(tags) > i else None)
+
+    # Nettoyage de la colonne 'text' : d'abord on retire les hashtags
+    df_preprocessed = df_w_keyword.copy()
+    df_preprocessed['clean_text'] = df_preprocessed['text'].apply(lambda x: re.sub(r"#\w+", "", x) if isinstance(x, str) else x)
+    # Ensuite on enlève les caractères spéciaux, y commpris les emojis (conserver les lettres, chiffres et espaces)
+    df_preprocessed['clean_text'] = df_preprocessed['clean_text'].apply(lambda x: re.sub(r"[^\w\s]", "", x) if isinstance(x, str) else x)
+
+    # Conversion de la colonne 'polarity' en numérique (float)
+    df_preprocessed['polarity'] = pd.to_numeric(df_preprocessed['polarity'], errors='coerce')
+
+    # Création de la colonne 'sentiment' à partir de la polarité pour une meilleure interprétation
+    def polarity_to_sentiment(polarity):
+        if pd.isnull(polarity):
+            return None
+        if polarity == 0.0:
+            return 'neutral'
+        elif polarity >= 0.5:
+            return 'positive'
+        else:
+            return 'negative'
+    df_preprocessed['sentiment'] = df_preprocessed['polarity'].apply(polarity_to_sentiment)
+    print(f"Sentiment : {df_preprocessed['sentiment'].value_counts()}")
+
+    # Correction des types de colonnes
+    if 'created_at' in df_preprocessed.columns:
+        df_preprocessed['created_at'] = pd.to_datetime(df_preprocessed['created_at'], errors='coerce')
+
+    # Conversion des colonnes numériques (exemples)
+    # retweet_count :float, 
+    for col in ['followers', 'friends', 'retweet_count']:
+        if col in df_preprocessed.columns:
+            df_preprocessed[col] = pd.to_numeric(df_preprocessed[col], errors='coerce')
+
+
+    return df_preprocessed
+
+
+
+
+# =========================================================================
+# Exploration des données exemple : https://www.kaggle.com/code/zeyadalmothafar/bigtech-tweets-sentiment-analysis 
+
+
+# 1. De base : supprimer les lignes, les doublons, reset index ----> (ok)
+# 2. Enlever valeurs manquantes : on a pas mal de valeurs nulles dans la colonne 'emplacement' (26%)
+# 3. Enlever caractères spéciaux (avec emojis) sans les hashtags
+# 4. Mettre les hashtags dans une colonne mots_clés ou thème_du_tweet ==> une colonne par mots clés par une ligne peut 
+# contenir plusieurs mots clés (le nombre de colonne mot_clé_i correspond au nombre max de mots clés au niveau d'une ligne donnée)
+# 5. Ensuite, on peut enlever les hashtags dans la colonne tweet ? 
+
+# 6. Ajout d'une colonne "sentiment" qui utilise la "polarité" ==> plus interprétable 
+# Comme ça on définit 3 classes : négatif - neutre - positif
+# ================ Exemple ================: 
+
+# def polarity_to_sentiment(polarity):
+#     if polarity == 0.0:
+#         return 'neutral'
+#     elif polarity >= 0.5:
+#         return 'positive'
+#     else:
+#         return 'negative'
+
+# df['sentiment'] = df['polarity'].apply(polarity_to_sentiment)
+# ==========================================
+
+# 7. Bien définir/fixer les types des variables (colonnes)
+# =========================================================================
