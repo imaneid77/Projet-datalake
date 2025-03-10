@@ -100,6 +100,18 @@ def clean_data(content):
     print(f"Version finale : {df_preprocessed.head(5)}")
 
 
+    #suppression des colonnes inutiles
+    columns_to_drop=["file_name","partition_1"]
+    df.drop(columns=[col for col in columns_to_drop if col in df.columns],inplace=True)
+
+    #on supprime tous les espaces vides en trop dans toutes les colonnes
+    df=df.applymap(lambda x:x.strip() if isinstance(x,str)else x)
+
+    #encodage des variables catégoriques
+    categorical_cols=["group_name","location","search_query","partition_0"]
+    data=pd.get_dummies(data,columns=[col for col in categorical_cols if col in data.columns])
+    #faut vérifier si location a pas trop de valeurs sinon on va utiliser label encoding
+
     return df_preprocessed
 
 # Pour tester je vais d'abord envoyer les données prétraitées dans un dossier local, 
