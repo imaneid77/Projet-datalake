@@ -28,6 +28,37 @@ def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv
 #  Extraction des hashtags depuis la colonne 'text'
 def extract_hashtags(text):
     return re.findall(r"#\w+", text)
+
+
+def clean_text_func(text):
+    """
+    Nettoie un texte en supprimant :
+      - Les URLs
+      - Les hashtags
+      - Les emojis
+      - Les caractères spéciaux (conserve lettres, chiffres et espaces)
+      - Les espaces multiples
+    """
+    if not isinstance(text, str):
+        return text
+
+    # Supprimer les URLs
+    text = re.sub(r'http\S+', '', text)
+    # Supprimer les hashtags
+    text = re.sub(r"#\w+", '', text)
+    # Supprimer les emojis (motif couvrant plusieurs plages Unicode)
+    emoji_pattern = re.compile("["
+                           u"\U0001F600-\U0001F64F"  # émoticônes
+                           u"\U0001F300-\U0001F5FF"  # symboles et pictogrammes
+                           u"\U0001F680-\U0001F6FF"  # transport et symboles
+                           u"\U0001F1E0-\U0001F1FF"  # drapeaux
+                           "]+", flags=re.UNICODE)
+    text = emoji_pattern.sub(r'', text)
+    # Supprimer les caractères spéciaux restants (conserver lettres, chiffres et espaces)
+    text = re.sub(r"[^\w\s]", "", text)
+    # Supprimer les espaces multiples
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
     
 
 def clean_data(content):
@@ -36,8 +67,9 @@ def clean_data(content):
     Diverses transformations seront appliquer pour garantir un formattage 
     et une standardisation des données.
     """
+    
     df = pd.read_csv(StringIO(content))
-    print(f"df initial : {df}, colonnes : {df.columns}, dtypes : {df.dtypes}")
+    print(f"df initial : {df.shape}, colonnes : {df.columns.tolist()}, dtypes :\n{df.dtypes}")
     
     # Suppression des lignes vides dans la colonne 'text'
     df = df.dropna(subset=['text'])
@@ -59,10 +91,6 @@ def clean_data(content):
     # On supprime tous les espaces vides en trop dans toutes les colonnes
     df_no_duplicated = df_no_duplicated.applymap(lambda x:x.strip() if isinstance(x,str)else x)
 
-
-
-
-
     # Extraction des hashtags depuis la colonne 'text' 
     # On conserve le symbole '#' pour les repérer  
     df_w_keyword =  df_no_duplicated.copy()
@@ -78,9 +106,7 @@ def clean_data(content):
 
     # Nettoyage de la colonne 'text' : d'abord on retire les hashtags
     df_preprocessed = df_w_keyword.copy()
-    df_preprocessed['clean_text'] = df_preprocessed['text'].apply(lambda x: re.sub(r"#\w+", "", x) if isinstance(x, str) else x)
-    # Ensuite on enlève les caractères spéciaux, y commpris les emojis (conserver les lettres, chiffres et espaces)
-    df_preprocessed['clean_text'] = df_preprocessed['clean_text'].apply(lambda x: re.sub(r"[^\w\s]", "", x) if isinstance(x, str) else x)
+    df_preprocessed['clean_text'] = df_preprocessed['text'].apply(clean_text_func)
     print(f"Colonnes avec 'clean_text' nrmlt : {df_preprocessed.columns}")
 
     # Conversion de la colonne 'polarity' en numérique (float)
@@ -114,19 +140,20 @@ def clean_data(content):
 
     # ====== Encodage des variables catégoriques ======
     print("==== encodage des var catégoriques ====")
-    categorical_cols=["group_name","location","search_query","partition_0"]     # partition_0 a que 1 seule valeur unique donc inutile de l'encoder
+    # categorical_cols=["group_name","location","search_query","partition_0"]     # partition_0 a que 1 seule valeur unique donc inutile de l'encoder
+    # Pour 'group_name' et 'search_query', le one-hot encoding est raisonnable
+    categorical_cols = ["group_name", "search_query"]
+    df_encoded = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
+    # Pour 'location', avec 84k valeurs uniques, il est préférable de ne pas appliquer get_dummies ici
+    # Vous pourrez appliquer un encodage (ex : label encoding ou top N) lors de la phase ML (ou curated) si nécessaire.
+    print("Df prétraité final (après encodage) :")
+    print(df_encoded.head(5))
 
-    for col in categorical_cols:
-        unique_count = df_preprocessed[col].nunique()
-        print(f"Colonne {col}: {unique_count} valeurs uniques")
-
-    # ==== Si on veut un label_encoding (ou un top N) a la limite l'appliqer dans le curated ==== 
+    # ==== v1 ==== 
     # data = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
-    #faut vérifier si location a pas trop de valeurs sinon on va utiliser label encoding
     # ===================================================
 
-    # data si on veut appliquer le label_encoding
-    return df_preprocessed
+    return df_encoded
 
 
 
