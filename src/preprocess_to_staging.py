@@ -112,13 +112,14 @@ def clean_data(content):
     print(f"Version finale : {df_preprocessed.head(5)}")
 
 
-    # Encodage des variables catégoriques
-    print("==== encodage des var catégoriques ====")
-    categorical_cols=["group_name","location","search_query","partition_0"]
-    data = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
-    #faut vérifier si location a pas trop de valeurs sinon on va utiliser label encoding
+    # # Encodage des variables catégoriques
+    # print("==== encodage des var catégoriques ====")
+    # categorical_cols=["group_name","location","search_query","partition_0"]
+    # data = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
+    # #faut vérifier si location a pas trop de valeurs sinon on va utiliser label encoding
 
-    return data
+    # data si on veut appliquer le label_encoding
+    return df_preprocessed
 
 # Pour tester je vais d'abord envoyer les données prétraitées dans un dossier local, 
 # mais le but final ça sera de l'envoyer vers une db mysql
