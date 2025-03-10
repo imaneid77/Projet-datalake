@@ -8,6 +8,7 @@ from pathlib import Path
 from mysql.connector import Error
 
 
+# **************** RECUPERER LES DONNEES DEPUIS LE BUCKET RAW ********************
 def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv"):
     """
     Récupère les données depuis le bucket raw.
@@ -25,42 +26,40 @@ def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv
         return None
     
 
-#  Extraction des hashtags depuis la colonne 'text'
+#  **************** EXTRACTION DES '#' ****************
 def extract_hashtags(text):
     return re.findall(r"#\w+", text)
 
 
+# **************** NETTOYAGE DES DONNEES -1- ******************
 def clean_text_func(text):
     """
-    Nettoie un texte en supprimant :
-      - Les URLs
-      - Les hashtags
-      - Les emojis
-      - Les caractères spéciaux (conserve lettres, chiffres et espaces)
-      - Les espaces multiples
+    Nettoie un texte en supprimant les URLs, les hashtags, les emojis,
+    les caractères spéciaux (conserve lettres, chiffres et espaces),
+    les espaces multiples
     """
     if not isinstance(text, str):
         return text
 
-    # Supprimer les URLs
-    text = re.sub(r'http\S+', '', text)
-    # Supprimer les hashtags
-    text = re.sub(r"#\w+", '', text)
-    # Supprimer les emojis (motif couvrant plusieurs plages Unicode)
+    text = re.sub(r'http\S+', '', text)              # supprime les URLs
+    text = re.sub(r"#\w+", '', text)                 # supprime les hashtags
+    # Supprime les emojis (motif couvrant plusieurs plages Unicode)
     emoji_pattern = re.compile("["
                            u"\U0001F600-\U0001F64F"  # émoticônes
                            u"\U0001F300-\U0001F5FF"  # symboles et pictogrammes
                            u"\U0001F680-\U0001F6FF"  # transport et symboles
                            u"\U0001F1E0-\U0001F1FF"  # drapeaux
                            "]+", flags=re.UNICODE)
+    
     text = emoji_pattern.sub(r'', text)
-    # Supprimer les caractères spéciaux restants (conserver lettres, chiffres et espaces)
-    text = re.sub(r"[^\w\s]", "", text)
-    # Supprimer les espaces multiples
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^\w\s]", "", text)  # supprime les caractères spéciaux restants (conserver lettres, chiffres et espaces)
+    text = re.sub(r"\s+", " ", text)    # supprime les espaces multiples
+
     return text.strip()
+
     
 
+# **************** NETTOYAGE DES DONNEES -2- ******************
 def clean_data(content):
     """
     Nettoie les données (suppression des doublons, des lignes vides etc.)
@@ -144,34 +143,130 @@ def clean_data(content):
     # Pour 'group_name' et 'search_query', le one-hot encoding est raisonnable
     categorical_cols = ["group_name", "search_query"]
     df_encoded = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
+
     # Pour 'location', avec 84k valeurs uniques, il est préférable de ne pas appliquer get_dummies ici
     # Vous pourrez appliquer un encodage (ex : label encoding ou top N) lors de la phase ML (ou curated) si nécessaire.
-    print("Df prétraité final (après encodage) :")
-    print(df_encoded.head(5))
-
-    # ==== v1 ==== 
-    # data = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
+    print("=== Df prétraité final (après encodage) ===:")
+    print(df_encoded['clean_text'].head(5))
     # ===================================================
+
+    # On met 'clean_text" a la suite de 'text'
+    cols = list(df_encoded.columns)
+    if 'text' in cols and 'clean_text' in cols:
+        cols.remove('clean_text')
+        idx = cols.index('text') + 1
+        cols.insert(idx, 'clean_text')
+        df_encoded = df_encoded[cols]
 
     return df_encoded
 
 
+# **************** CONNECTION A MYSQL ******************
+def create_mysql_connection(host, user, password, database):
+    """
+    Crée une connexion MySQL.
+    """
+    try:
+        connection = mysql.connector.connect(
+            host=host,
+            user=user,
+            password=password,
+            database=database
+        )
+        return connection
+    except Error as e:
+        print(f"Erreur lors de la connexion à MySQL: {e}")
+        return None
 
 
-# Pour tester je vais d'abord envoyer les données prétraitées dans un dossier local, 
-# mais le but final ça sera de l'envoyer vers une db mysql
-def upload_to_staging(df, output_file):
+# **************** CREATION DE LA TABLE SQL ******************
+def create_table(connection):
     """
-    Sauvegarde le DataFrame prétraité dans un fichier CSV dans le répertoire Staging.
+    Crée la table tweets si elle n'existe pas.
     """
-    Path(Path(output_file).parent).mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_file, index=False, encoding='utf-8')
-    print(f"Fichier prétraité sauvegardé dans : {output_file}")
+    try:
+        cursor = connection.cursor()
+        # hashtags_list TEXT, a modifier !!!!!!!!!!!!!!
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tweets_staging (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                created_at DATETIME,
+                followers INT,
+                friends INT,
+                group_name VARCHAR(255),
+                location VARCHAR(255),
+                retweet_count INT,
+                screenname VARCHAR(255),
+                search_query VARCHAR(255),
+                text TEXT,
+                twitter_id VARCHAR(255),
+                username VARCHAR(255),
+                polarity FLOAT,
+                partition_0 VARCHAR(255),
+                hashtags_list TEXT,         
+                clean_text TEXT,
+                sentiment VARCHAR(20)
+            )
+        """)
+        connection.commit()
+    except Error as e:
+        print(f"Erreur lors de la création de la table: {e}")
+
+
+def insert_data(connection, df):
+    """
+    Insère les données du DataFrame dans la table tweets_staging.
+    Seules certaines colonnes principales sont insérées.
+    """
+    try:
+        cursor = connection.cursor()
+        # Colonnes ciblées pour l'insertion (à adapter selon vos besoins)
+        cols = [
+            "created_at", "followers", "friends", "group_name", "location",
+            "retweet_count", "screenname", "search_query", "text", "twitter_id",
+            "username", "polarity", "partition_0", "hashtags_list", "clean_text", "sentiment"
+        ]
+        insert_query = f"INSERT INTO tweets_staging ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
+        
+        # Préparation des valeurs
+        values = []
+        for _, row in df.iterrows():
+            row_values = []
+            for col in cols:
+                val = row.get(col, None)
+                # Pour hashtags_list, convertit la liste en chaîne de caractères
+                if col == "hashtags_list" and isinstance(val, list):
+                    val = str(val)
+                row_values.append(val)
+            values.append(tuple(row_values))
+        
+        cursor.executemany(insert_query, values)
+        connection.commit()
+        print(f"{cursor.rowcount} lignes insérées avec succès dans MySQL.")
+    except Error as e:
+        print(f"Erreur lors de l'insertion des données: {e}")
+
+
+def validate_data(connection):
+    """Valide les données insérées en exécutant quelques requêtes SQL."""
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tweets_staging")
+        total_count = cursor.fetchone()[0]
+        print(f"Nombre total de lignes dans tweets_staging: {total_count}")
+        
+        cursor.execute("SELECT id, text, sentiment FROM tweets_staging LIMIT 5")
+        print("\nExemple de 5 premières lignes:")
+        for row in cursor.fetchall():
+            print(f"ID: {row[0]}, Text: {row[1][:50]}..., Sentiment: {row[2]}")
+    except Error as e:
+        print(f"Erreur lors de la validation des données: {e}")
+
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Script de prétraitement des données Big Tech Twitter (préparation vers la couche Staging)"
+        description="Prétraitement des données Big Tech Twitter et insertion dans MySQL (couche Staging)"
     )
     parser.add_argument("--endpoint-url", type=str, default="http://localhost:4566",
                         help="Endpoint S3 (LocalStack ou AWS)")
@@ -179,22 +274,54 @@ def main():
                         help="Nom du bucket RAW")
     parser.add_argument("--file-name", type=str, default="bigtech_combined.csv",
                         help="Nom du fichier dans le bucket RAW")
-    parser.add_argument("--output-file", type=str, default="local_dataset/staging/bigtech_staging.csv",
-                        help="Fichier de sortie prétraité (couche Staging)")
-    args = parser.parse_args()
+    parser.add_argument("--db_host", type=str, required=True, help="Hôte MySQL")
+    parser.add_argument("--db_user", type=str, required=True, help="Utilisateur MySQL")
+    parser.add_argument("--db_password", type=str, required=True, help="Mot de passe MySQL")
+    parser.add_argument("--db_database", type=str, default="staging", help="Base de données MySQL")
     
+    args = parser.parse_args()
+
     # Récupération des données depuis le bucket RAW
+    print("Récupération des données depuis le bucket RAW...")
     content = get_data_from_raw(args.endpoint_url, args.bucket, args.file_name)
     if content is None:
         print("Aucune donnée récupérée depuis S3.")
         return
     
-    # Application des transformations de nettoyage et enrichissement
+    # Application du prétraitement
+    print("Nettoyage et transformation des données...")
     df_clean = clean_data(content)
-
-    # Sauvegarde dans le répertoire Staging
-    upload_to_staging(df_clean, args.output_file)
     
+    # Réorganiser les colonnes pour placer 'clean_text' juste après 'text'
+    cols = list(df_clean.columns)
+    if 'text' in cols and 'clean_text' in cols:
+        cols.remove('clean_text')
+        idx = cols.index('text') + 1
+        cols.insert(idx, 'clean_text')
+        df_clean = df_clean[cols]
+    
+    # Connexion à MySQL
+    print("Connexion à MySQL...")
+    connection = create_mysql_connection(args.db_host, args.db_user, args.db_password, args.db_database)
+    if connection is None:
+        return
+    
+    # Création de la table si nécessaire
+    print("Création de la table tweets_staging si elle n'existe pas...")
+    create_table(connection)
+    
+    # Insertion des données dans MySQL
+    print("Insertion des données dans MySQL...")
+    insert_data(connection, df_clean)
+    
+    # Validation des données insérées
+    print("Validation des données insérées...")
+    validate_data(connection)
+    
+    connection.close()
+    print("Traitement terminé.")
+    
+
 if __name__ == "__main__":
     main()
 
