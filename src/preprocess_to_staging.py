@@ -309,6 +309,10 @@ def insert_data_in_batches(connection, df, batch_size=1000):
         row_values = []
         for col in cols:
             val = row.get(col, None)
+            # Convertir np.nan en None car génère une erreur 
+            # Les valeurs manquantes (nan) sont remplacées par None pour que ça soit gérer par MySQL
+            if pd.isna(val):
+                val = None
             row_values.append(val)
         all_values.append(tuple(row_values))
     
