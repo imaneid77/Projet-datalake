@@ -80,7 +80,7 @@ def clean_data(content):
     
     df = pd.read_csv(StringIO(content))
     print(f"df initial : {df.shape}, colonnes : {df.columns.tolist()}, dtypes :\n{df.dtypes}")
-    if 'created_at' in df_preprocessed.columns:
+    if 'created_at' in df.columns:
         df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
     
     # Suppression des lignes vides dans la colonne 'text'
@@ -252,43 +252,51 @@ def create_table(connection):
 
 
 # **************** INSERTION DANS LA TABLE SQL ******************
-def insert_data(connection, df):
+def insert_data_in_batches(connection, df, batch_size=1000):
     """
-    Insère les données du DataFrame dans la table tweets_staging.
-    Seules certaines colonnes principales sont insérées.
+    Insère les données du DataFrame dans la table tweets_staging par lots
+    pour éviter les requêtes trop volumineuses.
     """
-    try:
-        cursor = connection.cursor()
-        # Colonnes ciblées pour l'insertion (à adapter selon vos besoins)
-        cols = [
-            "created_at", "followers", "friends", "location", "retweet_count",
-            "screenname", "text", "clean_text", "twitter_id", "username",
-            "polarity", "partition_0",
-            "keyword_1", "keyword_2", "keyword_3", "keyword_4", "keyword_5", "keyword_6",
-            "keyword_7", "keyword_8", "keyword_9", "keyword_10", "keyword_11", "keyword_12",
-            "keyword_13", "keyword_14", "keyword_15", "keyword_16", "keyword_17", "keyword_18",
-            "keyword_19", "keyword_20", "keyword_21", "keyword_22", "keyword_23", "keyword_24",
-            "keyword_25", "keyword_26", "keyword_27", "keyword_28", "keyword_29", "keyword_30",
-            "keyword_31", "keyword_32", "keyword_33", "keyword_34", "keyword_35", "keyword_36",
-            "keyword_37", "keyword_38", "keyword_39", "keyword_40", "keyword_41", "keyword_42",
-            "sentiment"
-        ]
-        insert_query = f"INSERT INTO tweets_staging ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
-        
-        # Préparation des valeurs pour insertion
-        values = []
-        for _, row in df.iterrows():
-            row_values = []
-            for col in cols:
-                val = row.get(col, None)
-                row_values.append(val)
-            values.append(tuple(row_values))
-        
-        cursor.executemany(insert_query, values)
-        connection.commit()
-        print(f"{cursor.rowcount} lignes insérées avec succès dans MySQL.")
-    except Error as e:
-        print(f"Erreur lors de l'insertion des données: {e}")
+    
+    cursor = connection.cursor()
+
+    # Colonnes ciblées pour l'insertion (à adapter selon vos besoins)
+    cols = [
+        "created_at", "followers", "friends", "location", "retweet_count",
+        "screenname", "text", "clean_text", "twitter_id", "username",
+        "polarity", "partition_0",
+        "keyword_1", "keyword_2", "keyword_3", "keyword_4", "keyword_5", "keyword_6",
+        "keyword_7", "keyword_8", "keyword_9", "keyword_10", "keyword_11", "keyword_12",
+        "keyword_13", "keyword_14", "keyword_15", "keyword_16", "keyword_17", "keyword_18",
+        "keyword_19", "keyword_20", "keyword_21", "keyword_22", "keyword_23", "keyword_24",
+        "keyword_25", "keyword_26", "keyword_27", "keyword_28", "keyword_29", "keyword_30",
+        "keyword_31", "keyword_32", "keyword_33", "keyword_34", "keyword_35", "keyword_36",
+        "keyword_37", "keyword_38", "keyword_39", "keyword_40", "keyword_41", "keyword_42",
+        "sentiment"
+    ]
+    insert_query = f"INSERT INTO tweets_staging ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
+    
+    # Préparation des valeurs pour insertion
+    all_values = []
+    for _, row in df.iterrows():
+        row_values = []
+        for col in cols:
+            val = row.get(col, None)
+            row_values.append(val)
+        all_values.append(tuple(row_values))
+    
+    # Insertion par lots
+    total_rows = len(all_values)
+    for start in range(0, total_rows, batch_size):
+        end = start + batch_size
+        batch = all_values[start:end]
+        try:
+            cursor.executemany(insert_query, batch)
+            connection.commit()
+            print(f"Insert batch: {start} -> {end} (total {total_rows})")
+        except Error as e:
+            print(f"Erreur lors de l'insertion des données (batch {start}-{end}): {e}")
+            break
 
 
 # **************** VALLIDATION DES DONNEES ******************
@@ -363,7 +371,7 @@ def main():
     
     # Insertion des données dans MySQL
     print("Insertion des données dans MySQL...")
-    insert_data(connection, df_clean)
+    insert_data_in_batches(connection, df_clean, batch_size=2000)
     
     # Validation des données insérées
     print("Validation des données insérées...")
