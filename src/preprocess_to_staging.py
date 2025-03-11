@@ -252,14 +252,14 @@ def create_table(connection):
 
 
 # **************** INSERTION DANS LA TABLE SQL ******************
-def insert_data_in_batches(connection, df):
+def insert_data_in_batches(connection, df, batch_size=1000):
     """
     Insère les données du DataFrame dans la table tweets_staging par lots
     pour éviter les requêtes trop volumineuses.
     """
     
     cursor = connection.cursor()
-    
+
     # Colonnes ciblées pour l'insertion (à adapter selon vos besoins)
     cols = [
         "created_at", "followers", "friends", "location", "retweet_count",
