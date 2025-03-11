@@ -87,7 +87,7 @@ def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,mode
     tokenized_data = pd.read_csv(output_files)
 
     # Fusion avec les métadonnées
-    print("Fusion des tokens avec les métadonnées...")
+    print("Fusion des tokens avec les autres colonnes...")
     processed_data = pd.concat([data, tokenized_data], axis=1)
 
     #Sauvegarde local
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_file", type=str, default="bigtech_staging.csv", help="Nom du fichier d'entrée dans le bucket staging (défaut : 'bigtech_staging.csv')")
     parser.add_argument("--output_file", type=str, default="bigtech_curated.parquet", help="Nom du fichier de sortie dans le bucket curated (défaut : 'bigtech_curated.parquet')")
     parser.add_argument("--model_name", type=str, default="bert-base-uncased", help="Nom du modèle de tokenizer")
-    parser.add_argument("--mongo_uri", type=str, default="mongodb://mongodb:27017/", help="URI de connexion MongoDB")
+    parser.add_argument("--mongo_uri", type=str, default="mongodb://localhost:27017/", help="URI de connexion MongoDB")
     parser.add_argument("--mongo_db", type=str, default="bigtech_db", help="Nom de la base de données MongoDB")
     parser.add_argument("--mongo_collection", type=str, default="tweets", help="Nom de la collection MongoDB")
 
