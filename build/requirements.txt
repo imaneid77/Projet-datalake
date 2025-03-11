@@ -9,3 +9,4 @@ transformers==4.46.3
 pymongo==4.10.1
 mysql-connector-python==9.0.0
 elasticsearch==7.0.1
+emoji
