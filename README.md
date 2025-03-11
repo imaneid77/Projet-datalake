@@ -46,4 +46,20 @@ On a également mis à disposition un service FastAPI qui expose différents end
 
 # 4. Procédures d'installation et de Build
 ---
+### 4.1. Prérequis
+- Python 3.9+
+- Docker et Docker Compose (docker-compose.yml pour LocalStack, MySQL, MongoDB, etc.)
+- pip pour installer les dépendances Python
 
+### 4.2. Installer les dépendances
+``pip install -r requirements.txt``
+
+(On doit s'assurer que requirements.txt contienne fastapi, uvicorn, boto3, mysql-connector-python, pymongo, pandas, emoji, etc.)
+
+### 4.3. Lancer les services Docker (LocalStack, MySQL, MongoDB)
+Lancer le fichier **docker-compose.yml** : ``docker-compose up -d``
+
+Vérifiez que LocalStack écoute sur http://localhost:4566, MySQL sur port 3306, MongoDB sur port 27017, etc.
+
+### 4.4. Créer les buckets et initialiser les bases
+#### 1. Créer le bucket "raw" sur LocalStack 
