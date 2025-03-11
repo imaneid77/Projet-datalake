@@ -371,7 +371,7 @@ def main():
     
     # Insertion des données dans MySQL
     print("Insertion des données dans MySQL...")
-    insert_data(connection, df_clean)
+    insert_data_in_batches(connection, df_clean, batch_size=2000)
     
     # Validation des données insérées
     print("Validation des données insérées...")
