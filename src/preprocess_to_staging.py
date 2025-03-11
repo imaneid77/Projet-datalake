@@ -30,6 +30,17 @@ def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv
 def extract_hashtags(text):
     return re.findall(r"#\w+", text)
 
+# **************** DEFINITION DU 'SENTIMENT' ****************
+def polarity_to_sentiment(polarity):
+        if pd.isnull(polarity):
+            return None
+        if polarity == 0.0:
+            return 'neutral'
+        elif polarity >= 0.5:
+            return 'positive'
+        else:
+            return 'negative'
+
 
 # **************** NETTOYAGE DES DONNEES -1- ******************
 def clean_text_func(text):
@@ -52,8 +63,8 @@ def clean_text_func(text):
                            "]+", flags=re.UNICODE)
     
     text = emoji_pattern.sub(r'', text)
-    text = re.sub(r"[^\w\s]", "", text)  # supprime les caractères spéciaux restants (conserver lettres, chiffres et espaces)
-    text = re.sub(r"\s+", " ", text)    # supprime les espaces multiples
+    text = re.sub(r"[^\w\s]", "", text)              # supprime les caractères spéciaux restants (conserver lettres, chiffres et espaces)
+    text = re.sub(r"\s+", " ", text)                 # supprime les espaces multiples
 
     return text.strip()
 
@@ -69,14 +80,16 @@ def clean_data(content):
     
     df = pd.read_csv(StringIO(content))
     print(f"df initial : {df.shape}, colonnes : {df.columns.tolist()}, dtypes :\n{df.dtypes}")
+    if 'created_at' in df_preprocessed.columns:
+        df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
     
     # Suppression des lignes vides dans la colonne 'text'
     df = df.dropna(subset=['text'])
     print(f"Lignes vides : {df['text'].isna()}")
 
     # Suppression des colonnes inutiles car redondants
-    print(f"==== Supprimer file_name, partition_0, partition_1 ====")
-    columns_to_drop = ["file_name", "partition_1", "partition_0"]
+    print(f"==== Supprimer file_name, partition_0, partition_1, search_query ====")
+    columns_to_drop = ["file_name", "partition_1", "partition_0", "search_query"]
     df.drop(columns=[col for col in columns_to_drop if col in df.columns],inplace=True)
     
     # Suppression des doublons et réinitialisation de l’index
@@ -91,51 +104,33 @@ def clean_data(content):
     df_no_duplicated = df_no_duplicated.applymap(lambda x:x.strip() if isinstance(x,str)else x)
 
     # Extraction des hashtags depuis la colonne 'text' 
-    # On conserve le symbole '#' pour les repérer  
     df_w_keyword =  df_no_duplicated.copy()
     df_w_keyword['hashtags_list'] = df_w_keyword['text'].apply(lambda x: extract_hashtags(x) if isinstance(x, str) else [])
     max_tags = df_w_keyword['hashtags_list'].apply(len).max()
     print(f"Nombre de hashtags max : {max_tags}")
+    print(f"Hashtag list : {df_w_keyword['hashtags_list']}")
 
     # Création de colonnes distinctes pour chaque hashtag (une colonne par hashtag)
     for i in range(max_tags):
         df_w_keyword[f'keyword_{i+1}'] = df_w_keyword['hashtags_list'].apply(lambda tags: tags[i] if len(tags) > i else None)
     print(f"Colonnes avec les mots clés nrmlt : {df_w_keyword.columns}")
     print(df_w_keyword.head(5))
+    # df_w_keyword = df_w_keyword.drop(["hashtags_list"], axis=1)             # on supprime ensuite cette liste ou on garde qd mm ici et on la met pas dans la table sql ?
 
-    # Nettoyage de la colonne 'text' : d'abord on retire les hashtags
+    # Nettoyage de la colonne 'text' : on retire les hashtags, emojis, caracteres speciaux...
     df_preprocessed = df_w_keyword.copy()
     df_preprocessed['clean_text'] = df_preprocessed['text'].apply(clean_text_func)
     print(f"Colonnes avec 'clean_text' nrmlt : {df_preprocessed.columns}")
 
-    # Conversion de la colonne 'polarity' en numérique (float)
-    df_preprocessed['polarity'] = pd.to_numeric(df_preprocessed['polarity'], errors='coerce')
-
-    # Création de la colonne 'sentiment' à partir de la polarité pour une meilleure interprétation
-    def polarity_to_sentiment(polarity):
-        if pd.isnull(polarity):
-            return None
-        if polarity == 0.0:
-            return 'neutral'
-        elif polarity >= 0.5:
-            return 'positive'
-        else:
-            return 'negative'
-    df_preprocessed['sentiment'] = df_preprocessed['polarity'].apply(polarity_to_sentiment)
-    print(f"Sentiment column : {df_preprocessed['sentiment'].value_counts()}")
-
-    # Correction des types de colonnes
-    if 'created_at' in df_preprocessed.columns:
-        df_preprocessed['created_at'] = pd.to_datetime(df_preprocessed['created_at'], errors='coerce')
-
     # Conversion des colonnes numériques : 'followers', 'friends', 'retweet_count', 'twitter_id', 'polarity'
     # retweet_count :float, 'twitter_id': long?, polarity:'float'...
-    for col in ['followers', 'friends', 'retweet_count']:
+    for col in ['followers', 'friends', 'retweet_count', 'polarity']:
         if col in df_preprocessed.columns:
             df_preprocessed[col] = pd.to_numeric(df_preprocessed[col], errors='coerce')
-    print("Df nettoyé\n")
-    print(f"Version finale : {df_preprocessed.head(5)}")
 
+    # Création de la colonne 'sentiment' à partir de la polarité pour une meilleure interprétation
+    df_preprocessed['sentiment'] = df_preprocessed['polarity'].apply(polarity_to_sentiment)
+    print(f"Sentiment column : {df_preprocessed['sentiment'].value_counts()}")
 
     # # ====== Encodage des variables catégoriques ======
     # print("==== encodage des var catégoriques ====")
@@ -157,6 +152,7 @@ def clean_data(content):
         cols.insert(idx, 'clean_text')
         df_preprocessed = df_preprocessed[cols]
     
+    print("=== Df nettoyé ===\n")
     print(df_preprocessed['clean_text'].head(5))
 
     return df_preprocessed
