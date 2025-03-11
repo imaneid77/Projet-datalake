@@ -1,14 +1,23 @@
-from fastapi import FastAPI, HTTPException, Query
-from typing import List, Optional
-import boto3
+import os
 import json
+import boto3
+import pandas as pd
 import mysql.connector
-from pymongo import MongoClient
 from datetime import datetime
+from pymongo import MongoClient
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse, FileResponse
 
-app = FastAPI(title="Data Lake API")
 
-# Configuration des connexions avec les bons paramètres
+
+app = FastAPI(
+    title="Tweets Data Lake API",
+    description="Endpoints pour accéder aux données RAW, Staging et Curated du Data Lake ainsi que des informations sur les métriques de remplissage des buckets(stats)",
+    version="1.0"
+)
+
+# ************ CONFIGURATION DES CONNEXIONS ************
 class DatabaseConnections:
     def __init__(self):
         # S3 (LocalStack)
@@ -17,26 +26,39 @@ class DatabaseConnections:
             endpoint_url='http://localstack:4566'
         )
             
-        
         # MySQL
         self.mysql_config = {
-            'host': 'mysql',
+            'host': 'mysql',            # nom_container = mysql et host = localhost !!
             'user': 'root',
             'password': 'root',
-            'database': 'nom_de_votre_bdd'
+            'database': 'staging'
         }
         
         # MongoDB
         self.mongo_uri = 'mongodb://mongodb:27017/'
         self.mongo_client = MongoClient(self.mongo_uri)
-        self.mongo_db = self.mongo_client['nom_de_votre_db']
+        self.mongo_db = self.mongo_client['bigtech_db']                # nom_de_votre_db !!
 
 db = DatabaseConnections()
 
 
-@app.get("/raw/", response_model=List[dict])
+# ************ ENDPOINT RAW ************
+@app.get("/raw/", response_model=List[dict], summary="Accès aux données brutes (RAW)")
 # A defnir =================================
-
+async def get_raw_tweets(limit: Optional[int] = Query(10, description="Nombre maximum de tweets à retourner")):
+    """
+    Récupère les tweets bruts depuis le bucket S3 'raw'. 
+    Le fichier utilisé est 'bigtech_combined.csv'.
+    """
+    try:
+        response = db.s3_client.get_object(Bucket='raw', Key='bigtech_combined.csv')
+        content = response['Body'].read().decode('utf-8')
+        # Utilisation de pandas pour lire le CSV et renvoyer quelques lignes sous forme de JSON
+        df = pd.read_csv(StringIO(content))
+        tweets = df.head(limit).to_dict(orient='records')
+        return tweets
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture depuis S3: {str(e)}")
 
 
 
