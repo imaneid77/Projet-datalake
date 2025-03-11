@@ -74,9 +74,9 @@ def clean_data(content):
     df = df.dropna(subset=['text'])
     print(f"Lignes vides : {df['text'].isna()}")
 
-    # Suppression des colonnes inutiles
-    print(f"==== Supprimer file_name et partition_1 ====")
-    columns_to_drop = ["file_name","partition_1"]
+    # Suppression des colonnes inutiles car redondants
+    print(f"==== Supprimer file_name, partition_0, partition_1 ====")
+    columns_to_drop = ["file_name", "partition_1", "partition_0"]
     df.drop(columns=[col for col in columns_to_drop if col in df.columns],inplace=True)
     
     # Suppression des doublons et réinitialisation de l’index
@@ -137,28 +137,29 @@ def clean_data(content):
     print(f"Version finale : {df_preprocessed.head(5)}")
 
 
-    # ====== Encodage des variables catégoriques ======
-    print("==== encodage des var catégoriques ====")
-    # categorical_cols=["group_name","location","search_query","partition_0"]     # partition_0 a que 1 seule valeur unique donc inutile de l'encoder
-    # Pour 'group_name' et 'search_query', le one-hot encoding est raisonnable
-    categorical_cols = ["group_name", "search_query"]
-    df_encoded = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
+    # # ====== Encodage des variables catégoriques ======
+    # print("==== encodage des var catégoriques ====")
+    # # categorical_cols=["group_name","location","search_query","partition_0"]     # partition_0 a que 1 seule valeur unique donc inutile de l'encoder
+    # # Pour 'group_name' et 'search_query', le one-hot encoding est raisonnable
+    # categorical_cols = ["group_name", "search_query"]
+    # df_encoded = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
 
-    # Pour 'location', avec 84k valeurs uniques, il est préférable de ne pas appliquer get_dummies ici
-    # Vous pourrez appliquer un encodage (ex : label encoding ou top N) lors de la phase ML (ou curated) si nécessaire.
-    print("=== Df prétraité final (après encodage) ===:")
-    print(df_encoded['clean_text'].head(5))
-    # ===================================================
+    # # Pour 'location', avec 84k valeurs uniques, il est préférable de ne pas appliquer get_dummies ici
+    # # Vous pourrez appliquer un encodage (ex : label encoding ou top N) lors de la phase ML (ou curated) si nécessaire.
+    # print("=== Df prétraité final (après encodage) ===:")
+    # # ===================================================
 
     # On met 'clean_text" a la suite de 'text'
-    cols = list(df_encoded.columns)
+    cols = list(df_preprocessed.columns)
     if 'text' in cols and 'clean_text' in cols:
         cols.remove('clean_text')
         idx = cols.index('text') + 1
         cols.insert(idx, 'clean_text')
-        df_encoded = df_encoded[cols]
+        df_preprocessed = df_preprocessed[cols]
+    
+    print(df_preprocessed['clean_text'].head(5))
 
-    return df_encoded
+    return df_preprocessed
 
 
 # **************** CONNECTION A MYSQL ******************
@@ -213,6 +214,7 @@ def create_table(connection):
         print(f"Erreur lors de la création de la table: {e}")
 
 
+# **************** INSERTION DANS LA TABLE SQL ******************
 def insert_data(connection, df):
     """
     Insère les données du DataFrame dans la table tweets_staging.
@@ -247,6 +249,7 @@ def insert_data(connection, df):
         print(f"Erreur lors de l'insertion des données: {e}")
 
 
+# **************** VALLIDATION DES DONNEES ******************
 def validate_data(connection):
     """Valide les données insérées en exécutant quelques requêtes SQL."""
     try:
