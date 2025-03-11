@@ -62,14 +62,29 @@ def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,mode
     
     #2.tokenisation des tweets
     print("Tokenisation des tweets...")
-    tokenized_data = []
-    for text in data["text"]:
-        tokens = tokenizer(text, truncation=True, padding="max_length", max_length=256, return_tensors="np")
-        tokenized_data.append(tokens["input_ids"][0])  # récupération des IDs des tokens
-    
+    #tokenized_data = []
+    #for text in data["text"]:
+     #   tokens = tokenizer(text, truncation=True, padding="max_length", max_length=256, return_tensors="np")
+      #  tokenized_data.append(tokens["input_ids"][0])  # récupération des IDs des tokens
+      # Tokenisation par batchs pour éviter les problèmes de mémoire
+    # Sauvegarde progressive dans un fichier CSV
+    output_files = "tokenized_tweets.csv"
+    batch_size = 5000
+
+    with open(output_files, "w") as f:
+        for i in range(0, len(data), batch_size):
+            batch_texts = data["text"].iloc[i:i+batch_size].tolist()
+            tokens = tokenizer(batch_texts, truncation=True, padding="max_length", max_length=256, return_tensors="np")
+
+            # Convertir en DataFrame temporaire et écrire dans le fichier
+            batch_df = pd.DataFrame(tokens["input_ids"].tolist())
+            batch_df.to_csv(f, mode="a", index=False, header=(i == 0))  # Écrire avec header seulement au début
+
     # Convertir en dataframe
-    tokenized_data = pd.DataFrame(tokenized_data)
-    tokenized_data.columns = [f"token_{i}" for i in range(tokenized_data.shape[1])]
+    #tokenized_data = pd.DataFrame(tokenized_data)
+    #tokenized_data.columns = [f"token_{i}" for i in range(tokenized_data.shape[1])]
+    # Lire le fichier pour le convertir en DataFrame
+    tokenized_data = pd.read_csv(output_files)
 
     # Fusion avec les métadonnées
     print("Fusion des tokens avec les métadonnées...")
