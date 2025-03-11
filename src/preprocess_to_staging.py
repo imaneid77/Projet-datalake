@@ -30,6 +30,7 @@ def get_data_from_raw(endpoint_url, bucket_name, file_name="bigtech_combined.csv
 def extract_hashtags(text):
     return re.findall(r"#\w+", text)
 
+
 # **************** DEFINITION DU 'SENTIMENT' ****************
 def polarity_to_sentiment(polarity):
         if pd.isnull(polarity):
@@ -73,9 +74,8 @@ def clean_text_func(text):
 # **************** NETTOYAGE DES DONNEES -2- ******************
 def clean_data(content):
     """
-    Nettoie les données (suppression des doublons, des lignes vides etc.)
-    Diverses transformations seront appliquer pour garantir un formattage 
-    et une standardisation des données.
+    Nettoie les données en appliquant plusieurs transformations pour garantir
+    un formatage standardisé.
     """
     
     df = pd.read_csv(StringIO(content))
@@ -132,18 +132,6 @@ def clean_data(content):
     df_preprocessed['sentiment'] = df_preprocessed['polarity'].apply(polarity_to_sentiment)
     print(f"Sentiment column : {df_preprocessed['sentiment'].value_counts()}")
 
-    # # ====== Encodage des variables catégoriques ======
-    # print("==== encodage des var catégoriques ====")
-    # # categorical_cols=["group_name","location","search_query","partition_0"]     # partition_0 a que 1 seule valeur unique donc inutile de l'encoder
-    # # Pour 'group_name' et 'search_query', le one-hot encoding est raisonnable
-    # categorical_cols = ["group_name", "search_query"]
-    # df_encoded = pd.get_dummies(df_preprocessed, columns=[col for col in categorical_cols if col in df_preprocessed.columns])
-
-    # # Pour 'location', avec 84k valeurs uniques, il est préférable de ne pas appliquer get_dummies ici
-    # # Vous pourrez appliquer un encodage (ex : label encoding ou top N) lors de la phase ML (ou curated) si nécessaire.
-    # print("=== Df prétraité final (après encodage) ===:")
-    # # ===================================================
-
     # On met 'clean_text" a la suite de 'text'
     cols = list(df_preprocessed.columns)
     if 'text' in cols and 'clean_text' in cols:
@@ -152,10 +140,24 @@ def clean_data(content):
         cols.insert(idx, 'clean_text')
         df_preprocessed = df_preprocessed[cols]
     
-    print("=== Df nettoyé ===\n")
+    print("=== Exemple de 'clean_text' ===")
     print(df_preprocessed['clean_text'].head(5))
 
     return df_preprocessed
+
+
+
+# *************** SAUVEGARDE DANS S3 STAGING ***************
+def upload_to_s3(file_path, bucket, key, endpoint_url):
+    """
+    Téléverse un fichier local vers un bucket S3.
+    """
+    s3_client = boto3.client("s3", endpoint_url=endpoint_url)
+    try:
+        s3_client.upload_file(Filename=file_path, Bucket=bucket, Key=key)
+        print(f"Fichier téléversé avec succès : s3://{bucket}/{key}")
+    except Exception as e:
+        print(f"Erreur lors du téléversement vers S3: {e}")
 
 
 # **************** CONNECTION A MYSQL ******************
@@ -179,29 +181,68 @@ def create_mysql_connection(host, user, password, database):
 # **************** CREATION DE LA TABLE SQL ******************
 def create_table(connection):
     """
-    Crée la table tweets si elle n'existe pas.
+    Crée la table tweets_staging dans MySQL. 
     """
     try:
         cursor = connection.cursor()
-        # hashtags_list TEXT, a modifier !!!!!!!!!!!!!!
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tweets_staging (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 created_at DATETIME,
                 followers INT,
                 friends INT,
-                group_name VARCHAR(255),
                 location VARCHAR(255),
                 retweet_count INT,
                 screenname VARCHAR(255),
-                search_query VARCHAR(255),
                 text TEXT,
+                clean_text TEXT,
                 twitter_id VARCHAR(255),
                 username VARCHAR(255),
                 polarity FLOAT,
                 partition_0 VARCHAR(255),
-                hashtags_list TEXT,         
-                clean_text TEXT,
+                -- Les colonnes keywords (exemple, jusqu'à keyword_42)
+                keyword_1 VARCHAR(255),
+                keyword_2 VARCHAR(255),
+                keyword_3 VARCHAR(255),
+                keyword_4 VARCHAR(255),
+                keyword_5 VARCHAR(255),
+                keyword_6 VARCHAR(255),
+                keyword_7 VARCHAR(255),
+                keyword_8 VARCHAR(255),
+                keyword_9 VARCHAR(255),
+                keyword_10 VARCHAR(255),
+                keyword_11 VARCHAR(255),
+                keyword_12 VARCHAR(255),
+                keyword_13 VARCHAR(255),
+                keyword_14 VARCHAR(255),
+                keyword_15 VARCHAR(255),
+                keyword_16 VARCHAR(255),
+                keyword_17 VARCHAR(255),
+                keyword_18 VARCHAR(255),
+                keyword_19 VARCHAR(255),
+                keyword_20 VARCHAR(255),
+                keyword_21 VARCHAR(255),
+                keyword_22 VARCHAR(255),
+                keyword_23 VARCHAR(255),
+                keyword_24 VARCHAR(255),
+                keyword_25 VARCHAR(255),
+                keyword_26 VARCHAR(255),
+                keyword_27 VARCHAR(255),
+                keyword_28 VARCHAR(255),
+                keyword_29 VARCHAR(255),
+                keyword_30 VARCHAR(255),
+                keyword_31 VARCHAR(255),
+                keyword_32 VARCHAR(255),
+                keyword_33 VARCHAR(255),
+                keyword_34 VARCHAR(255),
+                keyword_35 VARCHAR(255),
+                keyword_36 VARCHAR(255),
+                keyword_37 VARCHAR(255),
+                keyword_38 VARCHAR(255),
+                keyword_39 VARCHAR(255),
+                keyword_40 VARCHAR(255),
+                keyword_41 VARCHAR(255),
+                keyword_42 VARCHAR(255),
                 sentiment VARCHAR(20)
             )
         """)
@@ -220,21 +261,26 @@ def insert_data(connection, df):
         cursor = connection.cursor()
         # Colonnes ciblées pour l'insertion (à adapter selon vos besoins)
         cols = [
-            "created_at", "followers", "friends", "group_name", "location",
-            "retweet_count", "screenname", "search_query", "text", "twitter_id",
-            "username", "polarity", "partition_0", "hashtags_list", "clean_text", "sentiment"
+            "created_at", "followers", "friends", "location", "retweet_count",
+            "screenname", "text", "clean_text", "twitter_id", "username",
+            "polarity", "partition_0",
+            "keyword_1", "keyword_2", "keyword_3", "keyword_4", "keyword_5", "keyword_6",
+            "keyword_7", "keyword_8", "keyword_9", "keyword_10", "keyword_11", "keyword_12",
+            "keyword_13", "keyword_14", "keyword_15", "keyword_16", "keyword_17", "keyword_18",
+            "keyword_19", "keyword_20", "keyword_21", "keyword_22", "keyword_23", "keyword_24",
+            "keyword_25", "keyword_26", "keyword_27", "keyword_28", "keyword_29", "keyword_30",
+            "keyword_31", "keyword_32", "keyword_33", "keyword_34", "keyword_35", "keyword_36",
+            "keyword_37", "keyword_38", "keyword_39", "keyword_40", "keyword_41", "keyword_42",
+            "sentiment"
         ]
         insert_query = f"INSERT INTO tweets_staging ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
         
-        # Préparation des valeurs
+        # Préparation des valeurs pour insertion
         values = []
         for _, row in df.iterrows():
             row_values = []
             for col in cols:
                 val = row.get(col, None)
-                # Pour hashtags_list, convertit la liste en chaîne de caractères
-                if col == "hashtags_list" and isinstance(val, list):
-                    val = str(val)
                 row_values.append(val)
             values.append(tuple(row_values))
         
@@ -265,14 +311,18 @@ def validate_data(connection):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Prétraitement des données Big Tech Twitter et insertion dans MySQL (couche Staging)"
+        description="Prétraitement des données Big Tech Twitter et envoi dans S3 staging (CSV) et insertion dans MySQL (couche Staging)"
     )
     parser.add_argument("--endpoint-url", type=str, default="http://localhost:4566",
                         help="Endpoint S3 (LocalStack ou AWS)")
-    parser.add_argument("--bucket", type=str, default="raw",
-                        help="Nom du bucket RAW")
+    parser.add_argument("--bucket_raw", type=str, default="raw",
+                        help="Nom du bucket RAW pour récupérer le fichier initial")
     parser.add_argument("--file-name", type=str, default="bigtech_combined.csv",
                         help="Nom du fichier dans le bucket RAW")
+    parser.add_argument("--bucket_staging", type=str, default="staging",
+                        help="Nom du bucket S3 pour stocker le CSV en staging")
+    parser.add_argument("--s3_key", type=str, default="bigtech_staging.csv",
+                        help="Clé (nom) du fichier dans le bucket staging")
     parser.add_argument("--db_host", type=str, required=True, help="Hôte MySQL")
     parser.add_argument("--db_user", type=str, required=True, help="Utilisateur MySQL")
     parser.add_argument("--db_password", type=str, required=True, help="Mot de passe MySQL")
@@ -282,7 +332,7 @@ def main():
 
     # Récupération des données depuis le bucket RAW
     print("Récupération des données depuis le bucket RAW...")
-    content = get_data_from_raw(args.endpoint_url, args.bucket, args.file_name)
+    content = get_data_from_raw(args.endpoint_url, args.bucket_raw, args.file_name)
     if content is None:
         print("Aucune donnée récupérée depuis S3.")
         return
@@ -290,15 +340,17 @@ def main():
     # Application du prétraitement
     print("Nettoyage et transformation des données...")
     df_clean = clean_data(content)
-    
-    # Réorganiser les colonnes pour placer 'clean_text' juste après 'text'
-    cols = list(df_clean.columns)
-    if 'text' in cols and 'clean_text' in cols:
-        cols.remove('clean_text')
-        idx = cols.index('text') + 1
-        cols.insert(idx, 'clean_text')
-        df_clean = df_clean[cols]
-    
+
+    # Sauvegarde locale du CSV en staging
+    staging_csv = "local_dataset/staging/bigtech_staging.csv"
+    Path(Path(staging_csv).parent).mkdir(parents=True, exist_ok=True)
+    df_clean.to_csv(staging_csv, index=False, encoding='utf-8')
+    print(f"Fichier CSV prétraité sauvegardé localement dans : {staging_csv}")
+
+    # Téléversement du CSV dans le bucket S3 staging
+    print("Téléversement du CSV dans le bucket S3 staging...")
+    upload_to_s3(staging_csv, args.bucket_staging, args.s3_key, args.endpoint_url)
+
     # Connexion à MySQL
     print("Connexion à MySQL...")
     connection = create_mysql_connection(args.db_host, args.db_user, args.db_password, args.db_database)
