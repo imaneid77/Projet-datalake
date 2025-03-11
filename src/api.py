@@ -3,6 +3,7 @@ import json
 import boto3
 import pandas as pd
 import mysql.connector
+from io import StringIO
 from datetime import datetime
 from pymongo import MongoClient
 from typing import List, Optional
@@ -28,7 +29,7 @@ class DatabaseConnections:
             
         # MySQL
         self.mysql_config = {
-            'host': 'mysql',            # nom_container = mysql et host = localhost !!
+            'host': 'localhost',            # nom_container = mysql et host = localhost !!
             'user': 'root',
             'password': 'root',
             'database': 'staging'
@@ -44,7 +45,6 @@ db = DatabaseConnections()
 
 # ************ ENDPOINT RAW ************
 @app.get("/raw/", response_model=List[dict], summary="Accès aux données brutes (RAW)")
-# A defnir =================================
 async def get_raw_tweets(limit: Optional[int] = Query(10, description="Nombre maximum de tweets à retourner")):
     """
     Récupère les tweets bruts depuis le bucket S3 'raw'. 
@@ -53,7 +53,6 @@ async def get_raw_tweets(limit: Optional[int] = Query(10, description="Nombre ma
     try:
         response = db.s3_client.get_object(Bucket='raw', Key='bigtech_combined.csv')
         content = response['Body'].read().decode('utf-8')
-        # Utilisation de pandas pour lire le CSV et renvoyer quelques lignes sous forme de JSON
         df = pd.read_csv(StringIO(content))
         tweets = df.head(limit).to_dict(orient='records')
         return tweets
@@ -61,7 +60,7 @@ async def get_raw_tweets(limit: Optional[int] = Query(10, description="Nombre ma
         raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture depuis S3: {str(e)}")
 
 
-
+# ************ ENDPOINT STAGING ************
 @app.get("/staging", response_model=List[dict], summary="Accès aux données intermédiaires (Staging)")
 async def get_staging_tweets(
     start_date: Optional[str] = Query(None, description="Date de début (YYYY-MM-DD)"),
@@ -98,9 +97,7 @@ async def get_staging_tweets(
         raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture depuis MySQL: {str(e)}")
 
 
-
-
-
+# ************ ENDPOINT CURATED ************
 @app.get("/curated", response_model=List[dict], summary="Accès aux données finales (Curated)")
 async def get_curated_tweets(limit: Optional[int] = Query(10, description="Nombre maximum de tweets à retourner")):
     """
@@ -117,7 +114,37 @@ async def get_curated_tweets(limit: Optional[int] = Query(10, description="Nombr
         raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture depuis MongoDB: {str(e)}")
 
 
+# ************ ENDPOINT STATS ************
+@app.get("/stats", summary="Métriques sur les données et services")
+async def get_stats():
+    """
+    Fournit quelques métriques sur les données stockées dans les différents niveaux du Data Lake.
+    """
+    try:
+        metrics = {}
+        # Statistiques pour le bucket RAW
+        response = db.s3_client.get_object(Bucket='raw', Key='bigtech_combined.csv')
+        content = response['Body'].read().decode('utf-8')
+        df_raw = pd.read_csv(StringIO(content))
+        metrics["raw_row_count"] = df_raw.shape[0]
+        
+        # Statistiques pour le staging (MySQL)
+        conn = mysql.connector.connect(**db.mysql_config)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tweets_staging")
+        metrics["staging_row_count"] = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        
+        # Statistiques pour les données curated (MongoDB)
+        metrics["curated_row_count"] = db.mongo_db.tweets_curated.count_documents({})
+        
+        return metrics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des statistiques: {str(e)}")
+    
 
+# ************ ENDPOINT HEALTH ************
 @app.get("/health", summary="Vérification de l'état des services")
 async def health_check():
     """
@@ -146,33 +173,6 @@ async def health_check():
         status["services"]["mongodb"] = False
     return status
 
-@app.get("/stats", summary="Métriques sur les données et services")
-async def get_stats():
-    """
-    Fournit quelques métriques sur les données stockées dans les différents niveaux du Data Lake.
-    """
-    try:
-        metrics = {}
-        # Statistiques pour le bucket RAW
-        response = db.s3_client.get_object(Bucket='raw', Key='bigtech_combined.csv')
-        content = response['Body'].read().decode('utf-8')
-        df_raw = pd.read_csv(StringIO(content))
-        metrics["raw_row_count"] = df_raw.shape[0]
-        
-        # Statistiques pour le staging (MySQL)
-        conn = mysql.connector.connect(**db.mysql_config)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM tweets_staging")
-        metrics["staging_row_count"] = cursor.fetchone()[0]
-        cursor.close()
-        conn.close()
-        
-        # Statistiques pour les données curated (MongoDB)
-        metrics["curated_row_count"] = db.mongo_db.tweets_curated.count_documents({})
-        
-        return metrics
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des statistiques: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
