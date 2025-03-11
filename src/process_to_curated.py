@@ -3,8 +3,9 @@ import pandas as pd
 import boto3
 from transformers import AutoTokenizer
 from sklearn.preprocessing import MinMaxScaler
+from pymongo import MongoClient
 
-def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,model_name="bert-base-uncased"):
+def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,model_name="bert-base-uncased",mongo_uri=None, mongo_db=None, mongo_collection=None):
     """
     Prépare les données pour la zone curated avec des traitements avancés.
 
@@ -82,6 +83,45 @@ def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,mode
         s3.upload_fileobj(f, bucket_curated,output_file)
 
     print(f"Les données traitées ont été téléchargées avec succès dans le bucket organisé sous le nom de {output_file}.")
+    # Envoi vers MongoDB si activé
+    if mongo_uri and mongo_db and mongo_collection:
+        print(f"Envoi des données vers MongoDB ({mongo_db}.{mongo_collection})...")
+        upload_to_mongodb(mongo_uri, mongo_db, mongo_collection, processed_data)
+
+
+
+def upload_to_mongodb(mongo_uri, database_name, collection_name, data):
+    """
+    Charge les données traitées dans MongoDB.
+    
+    Arguments :
+    - mongo_uri (str) : URI de connexion à MongoDB.
+    - database_name (str) : Nom de la base de données MongoDB.
+    - collection_name (str) : Nom de la collection où insérer les données.
+    - data (pd.DataFrame) : Données traitées sous forme de DataFrame.
+    """
+    try:
+        # Connexion à MongoDB
+        client = MongoClient(mongo_uri)
+        db = client[database_name]
+        collection = db[collection_name]
+
+        # Ajout des index pour améliorer les performances
+        print("Ajout des index pour optimiser MongoDB...")
+        collection.create_index("twitter_id", unique=True)  # Évite les doublons
+        collection.create_index("created_at")  # Améliore les recherches par date
+        collection.create_index("polarity")  # Accélère les requêtes sentimentales
+        print("Index ajoutés avec succès.")
+
+        # Convertir le DataFrame en dictionnaire JSON pour l'insertion
+        records = data.to_dict(orient="records")
+
+        # Insérer les données
+        result = collection.insert_many(records)
+        print(f" {len(result.inserted_ids)} documents insérés dans MongoDB ({database_name}.{collection_name})")
+
+    except Exception as e:
+        print(f"Erreur lors de l'insertion dans MongoDB : {e}")
 
 
 if __name__ == "__main__":
@@ -93,6 +133,10 @@ if __name__ == "__main__":
     parser.add_argument("--input_file", type=str, required=True, help="Nom de l'input dans le bucket staging")
     parser.add_argument("--output_file", type=str, required=True, help="Nom de l'output dans le bucket curated")
     parser.add_argument("--model_name", type=str, default="bert-base-uncased", help="Nom du modèle de tokenizer")
+    parser.add_argument("--mongo_uri", type=str, default="mongodb://mongodb:27017/", help="URI de connexion MongoDB")
+    parser.add_argument("--mongo_db", type=str, default="bigtech_db", help="Nom de la base de données MongoDB")
+    parser.add_argument("--mongo_collection", type=str, default="tweets", help="Nom de la collection MongoDB")
+
     args = parser.parse_args()
 
-    process_to_curated(args.bucket_staging, args.bucket_curated, args.input_file, args.output_file, args.model_name)
+    process_to_curated(args.bucket_staging, args.bucket_curated, args.input_file, args.output_file, args.model_name,args.mongo_uri,args.mongo_db,args.mongo_collection)
