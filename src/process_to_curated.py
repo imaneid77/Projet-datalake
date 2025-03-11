@@ -32,7 +32,7 @@ def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,mode
     #Téléchargement des données de STAGING
     print(f"Téléchargement de {input_file} depuis le bucket staging")
     response = s3.get_object(Bucket=bucket_staging, Key=input_file)
-    data = pd.read_csv(io.BytesIO(response['Body'].read()))
+    data = pd.read_csv(io.BytesIO(response['Body'].read()),low_memory=False)
 
     #suppression des valeurs aberrantes
     data=data[data["followers"]>0]
@@ -43,10 +43,13 @@ def process_to_curated(bucket_staging,bucket_curated,input_file,output_file,mode
     scaler=MinMaxScaler()
     data[["followers", "friends", "retweet_count"]] = scaler.fit_transform(data[["followers", "friends", "retweet_count"]])
 
+    # Convertir `created_at` en datetime
+    data["created_at"] = pd.to_datetime(data["created_at"], errors="coerce")
+
     #Ajout de nouvelles colonnes pour l'analyse
     data["day"] = data["created_at"].dt.dayofweek
     data["hour"] = data["created_at"].dt.hour
-    data["is_weekend"] = data["day_of_week"].apply(lambda x: 1 if x >= 5 else 0)
+    data["is_weekend"] = data["day"].apply(lambda x: 1 if x >= 5 else 0)
 
     #l'engagement score=interactions/audience, ça permet d'évaluer l'impact d'un tweet en fonction du nombre d'interactions qu'il génère
     #ici on met +1 pour éviter une division par 0 si la personne n'a aucun followers
@@ -128,10 +131,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Traiter les données depuis le bucket staging jusqu'au bucket curated")
-    parser.add_argument("--bucket_staging", type=str, required=True, help="Nom du bucket staging S3")
-    parser.add_argument("--bucket_curated", type=str, required=True, help="Nom du bucket curated S3")
-    parser.add_argument("--input_file", type=str, required=True, help="Nom de l'input dans le bucket staging")
-    parser.add_argument("--output_file", type=str, required=True, help="Nom de l'output dans le bucket curated")
+    parser.add_argument("--bucket_staging", type=str, default="staging", help="Nom du bucket staging S3 (défaut : 'staging')")
+    parser.add_argument("--bucket_curated", type=str, default="curated", help="Nom du bucket curated S3 (défaut : 'curated')")
+    parser.add_argument("--input_file", type=str, default="bigtech_staging.csv", help="Nom du fichier d'entrée dans le bucket staging (défaut : 'bigtech_staging.csv')")
+    parser.add_argument("--output_file", type=str, default="bigtech_curated.parquet", help="Nom du fichier de sortie dans le bucket curated (défaut : 'bigtech_curated.parquet')")
     parser.add_argument("--model_name", type=str, default="bert-base-uncased", help="Nom du modèle de tokenizer")
     parser.add_argument("--mongo_uri", type=str, default="mongodb://mongodb:27017/", help="URI de connexion MongoDB")
     parser.add_argument("--mongo_db", type=str, default="bigtech_db", help="Nom de la base de données MongoDB")
