@@ -46,15 +46,16 @@ def polarity_to_sentiment(polarity):
 # **************** NETTOYAGE DES DONNEES -1- ******************
 def clean_text_func(text):
     """
-    Nettoie un texte en supprimant les URLs, les hashtags, les emojis,
-    les caractères spéciaux (conserve lettres, chiffres et espaces),
-    les espaces multiples
+    Nettoie un texte en supprimant les URLs, les hashtags, les emojis
+    et les espaces multiples. La ponctuation est conservée pour préserver
+    la syntaxe des phrases.
     """
     if not isinstance(text, str):
         return text
 
     text = re.sub(r'http\S+', '', text)              # supprime les URLs
     text = re.sub(r"#\w+", '', text)                 # supprime les hashtags
+
     # Supprime les emojis (motif couvrant plusieurs plages Unicode)
     emoji_pattern = re.compile("["
                            u"\U0001F600-\U0001F64F"  # émoticônes
@@ -62,9 +63,11 @@ def clean_text_func(text):
                            u"\U0001F680-\U0001F6FF"  # transport et symboles
                            u"\U0001F1E0-\U0001F1FF"  # drapeaux
                            "]+", flags=re.UNICODE)
-    
     text = emoji_pattern.sub(r'', text)
-    text = re.sub(r"[^\w\s]", "", text)              # supprime les caractères spéciaux restants (conserver lettres, chiffres et espaces)
+
+    # Ne pas supprimer la ponctuation, on conserve les caractères spéciaux
+    # text = re.sub(r"[^\w\s]", "", text)  
+                
     text = re.sub(r"\s+", " ", text)                 # supprime les espaces multiples
 
     return text.strip()
@@ -357,7 +360,7 @@ def main():
     parser.add_argument("--bucket_raw", type=str, default="raw",
                         help="Nom du bucket RAW pour récupérer le fichier initial")
     parser.add_argument("--file-name", type=str, default="bigtech_combined.csv",
-                        help="Nom du fichier dans le bucket RAW")
+                        help="Nom du fichier dans le bucket RAW")       # Bigtech - 12-07-2020 till 19-09-2020.csv si on veut moins de données
     parser.add_argument("--bucket_staging", type=str, default="staging",
                         help="Nom du bucket S3 pour stocker le CSV en staging")
     parser.add_argument("--s3_key", type=str, default="bigtech_staging.csv",
