@@ -142,7 +142,7 @@ def clean_data(content):
     
     print("=== Exemple de 'clean_text' ===")
     print(df_preprocessed['clean_text'].head(5))
-    print(f"Colonnes finales du df : {df_preprocessed.columns}")
+    print(f"=== Colonnes finales du df : {df_preprocessed.columns}===")
 
     return df_preprocessed
 
@@ -164,16 +164,41 @@ def upload_to_s3(file_path, bucket, key, endpoint_url):
 # **************** CONNECTION A MYSQL ******************
 def create_mysql_connection(host, user, password, database):
     """
-    Crée une connexion MySQL.
+    Vérifie et crée la base de données MySQL si elle n'existe pas,
+    puis établit une connexion.
     """
     try:
+        # Connexion sans spécifier la base pour pouvoir la créer si nécessaire
+        connection = mysql.connector.connect(
+            host=host,
+            user=user,
+            password=password
+        )
+        cursor = connection.cursor()
+
+        # Vérifier si la base existe déjà
+        cursor.execute("SHOW DATABASES;")
+        databases = [db[0] for db in cursor.fetchall()]
+
+        if database not in databases:
+            print(f"La base de données '{database}' n'existe pas. Création en cours...")
+            cursor.execute(f"CREATE DATABASE {database};")
+            print(f"Base de données '{database}' créée avec succès.")
+
+        # Fermer la connexion temporaire
+        cursor.close()
+        connection.close()
+
+        # Reconnexion avec la base de données spécifiée
         connection = mysql.connector.connect(
             host=host,
             user=user,
             password=password,
             database=database
         )
+        print(f"Connexion réussie à la base '{database}'")
         return connection
+
     except Error as e:
         print(f"Erreur lors de la connexion à MySQL: {e}")
         return None
@@ -186,7 +211,8 @@ def create_table(connection):
     """
     try:
         cursor = connection.cursor()
-        cursor.execute("DROP TABLE IF EXISTS tweets_staging")    # on supprime l'ancienne table avant de mettre a jour
+        # En cas de changement de schéma : on supprime l'ancienne table avant de mettre a jour
+        cursor.execute("DROP TABLE IF EXISTS tweets_staging")    
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tweets_staging (
                 id INT AUTO_INCREMENT PRIMARY KEY,
