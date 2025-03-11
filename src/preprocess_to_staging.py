@@ -1,5 +1,6 @@
 import re
 import boto3
+import emoji
 import argparse
 import pandas as pd
 import mysql.connector
@@ -56,14 +57,8 @@ def clean_text_func(text):
     text = re.sub(r'http\S+', '', text)              # supprime les URLs
     text = re.sub(r"#\w+", '', text)                 # supprime les hashtags
 
-    # Supprime les emojis (motif couvrant plusieurs plages Unicode)
-    emoji_pattern = re.compile("["
-                           u"\U0001F600-\U0001F64F"  # émoticônes
-                           u"\U0001F300-\U0001F5FF"  # symboles et pictogrammes
-                           u"\U0001F680-\U0001F6FF"  # transport et symboles
-                           u"\U0001F1E0-\U0001F1FF"  # drapeaux
-                           "]+", flags=re.UNICODE)
-    text = emoji_pattern.sub(r'', text)
+    # Remplace tous les emojis par une chaîne vide
+    text = emoji.replace_emoji(text, '')
 
     # Ne pas supprimer la ponctuation, on conserve les caractères spéciaux
     # text = re.sub(r"[^\w\s]", "", text)  
