@@ -323,9 +323,9 @@ def main():
                         help="Nom du bucket S3 pour stocker le CSV en staging")
     parser.add_argument("--s3_key", type=str, default="bigtech_staging.csv",
                         help="Clé (nom) du fichier dans le bucket staging")
-    parser.add_argument("--db_host", type=str, required=True, help="Hôte MySQL")
-    parser.add_argument("--db_user", type=str, required=True, help="Utilisateur MySQL")
-    parser.add_argument("--db_password", type=str, required=True, help="Mot de passe MySQL")
+    parser.add_argument("--db_host", type=str,default="localhost", help="Hôte MySQL")
+    parser.add_argument("--db_user", type=str,default="root", help="Utilisateur MySQL")
+    parser.add_argument("--db_password", type=str,default="root", help="Mot de passe MySQL")
     parser.add_argument("--db_database", type=str, default="staging", help="Base de données MySQL")
     
     args = parser.parse_args()
