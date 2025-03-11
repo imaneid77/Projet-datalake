@@ -142,6 +142,7 @@ def clean_data(content):
     
     print("=== Exemple de 'clean_text' ===")
     print(df_preprocessed['clean_text'].head(5))
+    print(f"=== Colonnes finales du df : {df_preprocessed.columns}===")
 
     return df_preprocessed
 
