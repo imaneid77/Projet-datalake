@@ -142,6 +142,7 @@ def clean_data(content):
     
     print("=== Exemple de 'clean_text' ===")
     print(df_preprocessed['clean_text'].head(5))
+    print(f"Colonnes finales du df : {df_preprocessed.columns}")
 
     return df_preprocessed
 
@@ -185,12 +186,14 @@ def create_table(connection):
     """
     try:
         cursor = connection.cursor()
+        cursor.execute("DROP TABLE IF EXISTS tweets_staging")    # on supprime l'ancienne table avant de mettre a jour
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tweets_staging (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 created_at DATETIME,
                 followers INT,
                 friends INT,
+                group_name VARCHAR(255),
                 location VARCHAR(255),
                 retweet_count INT,
                 screenname VARCHAR(255),
@@ -199,7 +202,6 @@ def create_table(connection):
                 twitter_id VARCHAR(255),
                 username VARCHAR(255),
                 polarity FLOAT,
-                partition_0 VARCHAR(255),
                 -- Les colonnes keywords (exemple, jusqu'à keyword_42)
                 keyword_1 VARCHAR(255),
                 keyword_2 VARCHAR(255),
@@ -262,10 +264,9 @@ def insert_data_in_batches(connection, df, batch_size=1000):
 
     # Colonnes ciblées pour l'insertion (à adapter selon vos besoins)
     cols = [
-        "created_at", "followers", "friends", "location", "retweet_count",
+        "created_at", "followers", "friends", "group_name", "location", "retweet_count",
         "screenname", "text", "clean_text", "twitter_id", "username",
-        "polarity", "partition_0",
-        "keyword_1", "keyword_2", "keyword_3", "keyword_4", "keyword_5", "keyword_6",
+        "polarity", "keyword_1", "keyword_2", "keyword_3", "keyword_4", "keyword_5", "keyword_6",
         "keyword_7", "keyword_8", "keyword_9", "keyword_10", "keyword_11", "keyword_12",
         "keyword_13", "keyword_14", "keyword_15", "keyword_16", "keyword_17", "keyword_18",
         "keyword_19", "keyword_20", "keyword_21", "keyword_22", "keyword_23", "keyword_24",
