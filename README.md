@@ -1,5 +1,5 @@
 # PROJET DATA LAKE - DOCUMENTATION TECHNIQUE 
----
+
 
 # 1. Introduction
 ---
@@ -19,11 +19,31 @@ On applique les dernières transformations aux données finales. Celles-ci sont 
 
 ### 4. API Gateway
 On a également mis à disposition un service FastAPI qui expose différents endpoints :
-**/raw** : retourne les données brutes (CSV sur S3).
-**/staging** : retourne les données staging (MySQL).
-**/curated** : retourne les données finales (MongoDB).
-**/health** : vérifie la santé du service.
+**/raw** : retourne les données brutes (CSV sur S3).\\
+**/staging** : retourne les données staging (MySQL).\\
+**/curated** : retourne les données finales (MongoDB).\\
+**/health** : vérifie la santé du service.\\
 **/stats** : fournit quelques métriques (par exemple, le nombre de lignes par couche).
 
 # 3. Choix Techniques
 ---
+### Langage & Framework
+- **Python 3** pour l’ensemble du pipeline.
+- **FastAPI** pour l’API Gateway (documentation Swagger auto-générée).
+
+### Stockage
+- **S3** (via LocalStack en environnement local) pour la couche Raw.
+- **MySQL** pour la couche Staging (structuration relationnelle).
+- **MongoDB** pour la couche Curated (souplesse pour les données enrichies).
+
+### Pipeline de scripts
+- ``unpack_to_raw.py `` : Télécharge et combine les CSV depuis kagglehub, puis les stocke dans le bucket (s3) Raw.
+- ``preprocess_to_staging.py`` : Nettoie et transforme les données, puis les insère dans MySQL sous format table et dans le bucket (s3) Staging sous format csv.
+- ``process_to_curated.py`` : Tokenise et enrichit les données pour insertion dans MongoDB.
+
+### API
+- Uvicorn (serveur ASGI) pour exécuter FastAPI.
+
+# 4. Procédures d'installation et de Build
+---
+
