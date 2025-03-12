@@ -79,6 +79,20 @@ def upload_to_s3(file_path: str, endpoint_url: str, bucket: str = "raw", key: st
     except Exception as e:
         print(f"Erreur lors du téléversement : {e}")
 
+def unpack_pipeline(output_dir: str, endpoint_url: str, upload_s3: bool=False, bucket: str="raw", key: str=None):
+    """
+    Fonction qui encapsule le flux complet : téléchargement, concaténation,
+    et (optionnel) upload S3, sans faire d'argparse.
+    """
+    combined_csv_path = download_and_combine_kaggle_dataset(output_dir)
+
+    if upload_s3:
+        upload_to_s3(
+            file_path=combined_csv_path,
+            endpoint_url=endpoint_url,
+            bucket=bucket,
+            key=key
+        )
 
 def main():
     parser = argparse.ArgumentParser(description="Script d’insertion des données Big Tech Twitter dans la couche RAW")
@@ -95,17 +109,14 @@ def main():
 
     args = parser.parse_args()
 
-    # 1) Télécharger et combiner les CSV
-    combined_csv_path = download_and_combine_kaggle_dataset(args.output_dir)
+    unpack_pipeline(
+        output_dir=args.output_dir,
+        endpoint_url=args.endpoint_url,
+        upload_s3=args.upload_s3,
+        bucket=args.bucket,
+        key=args.key
+    )
 
-    # 2) (Optionnel) Uploader sur S3/LocalStack
-    if args.upload_s3:
-        upload_to_s3(
-            file_path=combined_csv_path,
-            endpoint_url=args.endpoint_url,
-            bucket=args.bucket,
-            key=args.key
-        )
 
 if __name__ == "__main__":
     main()
