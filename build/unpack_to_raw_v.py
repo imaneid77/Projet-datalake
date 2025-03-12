@@ -83,7 +83,7 @@ def upload_to_s3(file_path: str, endpoint_url: str, bucket: str = "raw", key: st
 def main():
     parser = argparse.ArgumentParser(description="Script d’insertion des données Big Tech Twitter dans la couche RAW")
     parser.add_argument("--output-dir", type=str, default="local_dataset/raw",
-                        help="Répertoire local où stocker le CSV combiné")
+                        help="Répertoire local où stocker le CSV combiné")      # ou output-dir = data/raw
     parser.add_argument("--endpoint-url", type=str, default="http://localhost:4566",
                         help="URL du endpoint S3 (LocalStack ou AWS)")
     parser.add_argument("--upload-s3", action="store_true",

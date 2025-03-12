@@ -3,32 +3,38 @@
 
 # 1. Introduction
 ---
-Ce projet met en place un Data Lake pour l’ingestion, le nettoyage et l’exposition de données de tweets (BigTech) en trois couches : Raw, Staging et Curated.
+Ce projet met en place un **Data Lake** pour l’ingestion, le nettoyage et l’exposition de données de tweets (BigTech) en trois couches : Raw, Staging et Curated.
 Une API Gateway (basée sur FastAPI) permet de consulter les données à chaque étape du pipeline, ainsi que de récupérer des informations de santé et de statistiques.
+Enfin, un pipeline Airflow assure l’automatisation et la reproductibilité de l’alimentation du Data Lake.
 
 
 # 2. Architecture Générale
 ---
 ### 1. Couche Raw
-Les données brutes (tweets) sont stockées dans un bucket S3 aws simulé par LocalStack, pour l’environnement de développement.
-
+Les données brutes (tweets) sont stockées dans un bucket S3 aws simulé par **LocalStack** pour l’environnement de développement.\\
+Le script ``unpack_to_raw.py`` récupère les CSV depuis Kaggle (via kagglehub) et les téléverse dans ce bucket.
 
 ### 2. Couche Staging
-Les données nettoyées sont insérées dans une base MySQL pour une première structuration.
+Les données nettoyées sont insérées dans une base **MySQL** pour une première structuration.\\
+Le script ``preprocess_to_staging.py`` nettoie et transforme les données avant de les charger dans MySQL (et éventuellement dans un bucket **staging**).
 
 
 ### 3. Couche Curated
-On applique les dernières transformations aux données finales. Celles-ci sont par la suite enrichies, tokenisées, puis stockées dans MongoDB.
+Les dernières transformations sont appliquées aux données finales : enrichissement, tokenisation (via un modèle BERT), etc. Ces données sont ensuite stockées dans MongoDB pour plus de souplesse.\\
+Le script ``process_to_curated.py`` réalise ces étapes et téléverse également un fichier Parquet final dans le bucket **curated**.
 
 
 ### 4. API Gateway
-On a également mis à disposition un service FastAPI qui expose différents endpoints :
+On a également mis à disposition un service **FastAPI** qui expose différents endpoints :
 **/raw** : retourne les données brutes (CSV sur S3).\\
 **/staging** : retourne les données staging (MySQL).\\
 **/curated** : retourne les données finales (MongoDB).\\
-**/health** : vérifie la santé du service.\\
+**/health** : vérifie la santé du service (connectivité S3, MySQL, MongoDB).\\
 **/stats** : fournit quelques métriques (par exemple, le nombre de lignes par couche).
 
+### 5. Orchestration (Airflow)
+Un **DAG Airflow** coordonne l’exécution **séquentielle (ou parallèle)** des scripts unpack_to_raw.py, preprocess_to_staging.py et process_to_curated.py.
+Ainsi, les tâches sont automatisées et déclenchées régulièrement (ou à la demande) pour alimenter le Data Lake de manière continue et reproductible.
 
 # 3. Choix Techniques
 ---
@@ -76,9 +82,9 @@ Vérifiez que LocalStack écoute sur http://localhost:4566, MySQL sur port 3306,
 ``aws --endpoint-url=http://localhost:4566 s3 mb s3://staging``
 ``aws --endpoint-url=http://localhost:4566 s3 mb s3://curated``
 
-#### 2. Créer la base MySQL (via un script ou manuellement)
+#### 2. Créer la base MySQL (inclut dans le script 'preprocess_to_staging')
 
-#### 3. Créer la base MongoDB (MongoDB se crée à l’insertion).
+#### 3. Créer la base MongoDB (MongoDB se crée à l’insertion dans 'process_to_curated').
 
 
 ### 4.5. Exécuter les scripts d’ingestion
