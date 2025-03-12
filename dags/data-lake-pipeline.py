@@ -36,7 +36,7 @@ transform_task = BashOperator(
 # Tâche 3: Chargement vers MongoDB
 load_task = BashOperator(
     task_id='process_to_curated',
-    bash_command='python /opt/airflow/scripts/process_to_curated.py --mysql_host mysql --mysql_user root --mysql_password root --mongo_uri mongodb://mongodb:27017/',
+    bash_command='python /opt/airflow/scripts/process_to_curated.py --mysql_host mysql --mysql_user root --mysql_password root --mongo_uri mongodb://localhost:27017/',
     dag=dag,
 )
 
