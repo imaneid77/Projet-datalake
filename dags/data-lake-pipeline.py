@@ -16,7 +16,7 @@ sys.path.insert(0, "/opt/airflow/scripts")  # Chemin dans Docker pour les script
 sys.path.insert(0, "/opt/airflow/build")    # Chemin dans Docker pour build
 
 from preprocess_to_staging import main as preprocess_main
-from process_to_curated2 import process_to_curated as process_main
+from process_to_curated import process_to_curated as process_main
 #from unpack_to_raw_v import main as unpack_main
 from unpack_to_raw_test import unpack_pipeline
 
