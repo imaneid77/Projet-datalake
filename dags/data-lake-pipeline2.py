@@ -1,3 +1,5 @@
+import os
+import sys
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.sensors.filesystem import FileSensor
@@ -8,12 +10,21 @@ try:
 except ImportError:
     print("Le module SimpleHttpOperator n'est pas disponible. Vérifiez votre installation.")
 
+
+# Ajouter le bon chemin pour Airflow
+sys.path.insert(0, "/opt/airflow/scripts")  # Chemin dans Docker pour les scripts
+sys.path.insert(0, "/opt/airflow/build")    # Chemin dans Docker pour build
+
+from preprocess_to_staging import main as preprocess_main
+from process_to_curated2 import process_to_curated as process_main
+from unpack_to_raw_v import main as unpack_main
+
 from airflow.providers.elasticsearch.log.es_task_handler import ElasticsearchTaskHandler
 from airflow.hooks.base import BaseHook
 from datetime import datetime, timedelta
-from src.preprocess_to_staging import main as preprocess_main
-from src.process_to_curated2 import main as process_main
-from build.unpack_to_raw_v import main as unpack_main
+#from scripts.preprocess_to_staging import main as preprocess_main
+#from scripts.process_to_curated2 import main as process_main
+#from build.unpack_to_raw_v import main as unpack_main
 
 default_args = {
     'owner': 'airflow',
@@ -26,7 +37,7 @@ default_args = {
 }
 
 dag = DAG(
-    'data_lake_pipeline',
+    'data_lake_pipeline2',
     default_args=default_args,
     description='Pipeline ETL pour le traitement des données',
     schedule=timedelta(days=1),
@@ -81,6 +92,10 @@ load_task = PythonOperator(
         'mysql_host': 'mysql',
         'mysql_user': 'root',
         'mysql_password': 'root',
+        'mysql_database': 'staging',
+        'bucket_curated': 'curated',
+        'output_file': 'bigtech_curated.parquet',
+        'model_name': 'bert-base-uncased',
         'mongo_uri': 'mongodb://localhost:27017/',
         'mongo_db': 'bigtech_db',
         'mongo_collection': 'tweets',
