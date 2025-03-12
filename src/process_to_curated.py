@@ -9,7 +9,7 @@ from pymongo import MongoClient, UpdateOne
 from pymongo.errors import BulkWriteError
 from sklearn.preprocessing import MinMaxScaler
 
-# ====== TOKENISATION MULTI-CPU ======
+# ====== TOKENISATION======
 from joblib import Parallel, delayed
 import torch
 from transformers import AutoTokenizer
@@ -17,7 +17,7 @@ from transformers import AutoTokenizer
 
 def get_data_from_mysql(mysql_host, mysql_user, mysql_password, mysql_database):
     """
-    Récupère toutes les données depuis MySQL (table 'tweets_staging').
+    Récupère toutes les données depuis MySQL
     """
     try:
         connection = mysql.connector.connect(
@@ -27,7 +27,7 @@ def get_data_from_mysql(mysql_host, mysql_user, mysql_password, mysql_database):
             database=mysql_database
         )
         query = "SELECT * FROM tweets_staging;"
-        df = pd.read_sql(query, connection)  # On a un avertissement dans le terminal : AVERTISSEMENT: "Non-SQLAlchemy connectable" - pas grave.
+        df = pd.read_sql(query, connection) 
         connection.close()
         print(f"{df.shape[0]} lignes récupérées depuis MySQL.")
         return df
@@ -180,7 +180,7 @@ def process_to_curated(mysql_host, mysql_user, mysql_password, mysql_database,
     print(f"Données sauvegardées localement : {local_output_path}")
 
     s3 = boto3.client('s3', endpoint_url='http://localhost:4566')
-    print(f"📤 Upload vers S3 bucket={bucket_curated}, key={output_file} ...")
+    print(f"Upload vers S3 bucket={bucket_curated}, key={output_file} ...")
     with open(local_output_path, "rb") as f:
         s3.upload_fileobj(f, bucket_curated, output_file)
     print(f"Données envoyées dans s3://{bucket_curated}/{output_file}")
@@ -201,8 +201,8 @@ if __name__ == "__main__":
     parser.add_argument("--mysql_database", type=str, default="staging", help="Base de données MySQL")
     parser.add_argument("--bucket_curated", type=str, default="curated", help="Nom du bucket S3 Curated")
     parser.add_argument("--output_file", type=str, default="bigtech_curated.parquet", help="Nom du fichier de sortie")
-    parser.add_argument("--model_name", type=str, default="bert-base-uncased", help="Modèle de tokenizer HF")
-    parser.add_argument("--mongo_uri", type=str, default="mongodb://localhost:27017/", help="URI de connexion MongoDB (laisser vide pour skip)")
+    parser.add_argument("--model_name", type=str, default="bert-base-uncased", help="Modèle de tokenizer")
+    parser.add_argument("--mongo_uri", type=str, default="mongodb://localhost:27017/", help="URI de connexion MongoDB")
     parser.add_argument("--mongo_db", type=str, default="bigtech_db", help="Base MongoDB")
     parser.add_argument("--mongo_collection", type=str, default="tweets", help="Collection MongoDB")
 
