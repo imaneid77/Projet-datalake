@@ -41,75 +41,121 @@ Ainsi, les tâches sont automatisées et déclenchées régulièrement (ou à la
 ### Langage & Framework
 - **Python 3** pour l’ensemble du pipeline.
 - **FastAPI** pour l’API Gateway (documentation Swagger auto-générée).
+- **Airflow** pour l’orchestration (DAG).
 
 ### Stockage
-- **S3** (via LocalStack en environnement local) pour la couche Raw.
+- **S3** (via LocalStack) pour la couche Raw.
 - **MySQL** pour la couche Staging (structuration relationnelle).
-- **MongoDB** pour la couche Curated (souplesse pour les données enrichies).
+- **MongoDB** pour la couche Curated (lexibilité, stockage de données enrichies).
 
 ### Pipeline de scripts
-- ``unpack_to_raw.py `` : Télécharge et combine les CSV depuis kagglehub, puis les stocke dans le bucket (s3) Raw.
-- ``preprocess_to_staging.py`` : Nettoie et transforme les données, puis les insère dans MySQL sous format table et dans le bucket (s3) Staging sous format csv.
-- ``process_to_curated.py`` : Tokenise et enrichit les données pour insertion dans MongoDB.
+- ``unpack_to_raw.py `` : Télécharge et combine les CSV depuis kagglehub, puis les stocke dans le bucket S3 "raw".
+- ``preprocess_to_staging.py`` : Nettoie et transforme les données, puis les insère dans MySQL et éventuellement téléverse un CSV intermédiaire dans le bucket "staging".
+- ``process_to_curated.py`` : Tokenise et enrichit les données pour insertion dans MongoDB, tout en téléversant un fichier Parquet final dans le bucket “curated”.
 
 ### API
-- Uvicorn (serveur ASGI) pour exécuter FastAPI.
+- **Uvicorn** (serveur ASGI) pour exécuter FastAPI.
+- **Swagger UI** auto-générée pour tester les endpoints (``/docs``).
+
+### Orchestration
+Airflow planifie et exécute les scripts selon un DAG. Chaque tâche correspond à un script (ou un groupe de scripts), assurant la reproductibilité et l’automatisation.
 
 
 # 4. Procédures d'installation et de Build
 ---
 ### 4.1. Prérequis
-- Python 3.9+
-- Docker et Docker Compose (docker-compose.yml pour LocalStack, MySQL, MongoDB, etc.)
+- **Python 3.9+**
+- **Docker** et **Docker Compose** (via docker-compose.yml pour LocalStack, MySQL, MongoDB, Airflow)
 - pip pour installer les dépendances Python
 
 
 ### 4.2. Installer les dépendances
 ``pip install -r requirements.txt``
 
-(On doit s'assurer que requirements.txt contienne fastapi, uvicorn, boto3, mysql-connector-python, pymongo, pandas, emoji, etc.)
+(On doit s'assurer que ``requirements.txt`` contienne fastapi, uvicorn, boto3, mysql-connector-python, pymongo, pandas, emoji, transformers, scikit-learn, apache-airflow, etc.)
 
 
-### 4.3. Lancer les services Docker (LocalStack, MySQL, MongoDB)
+### 4.3. Lancer les services Docker 
 Lancer le fichier **docker-compose.yml** : ``docker-compose up -d``
 
-Vérifiez que LocalStack écoute sur http://localhost:4566, MySQL sur port 3306, MongoDB sur port 27017, etc.
+Vérifiez que : 
+- LocalStack écoute sur ``http://localhost:4566``
+- MySQL sur port ``3306``
+- MongoDB sur port ``27017``
+- Airflow est accessible sur ``port 8080``.
 
 
 ### 4.4. Créer les buckets et initialiser les bases
-#### 1. Créer les bucket "raw", "staging" et "curated" sur LocalStack 
+#### 1. Buckets S3 “raw”, “staging”, “curated” sur LocalStack 
 ``aws --endpoint-url=http://localhost:4566 s3 mb s3://raw``
 ``aws --endpoint-url=http://localhost:4566 s3 mb s3://staging``
 ``aws --endpoint-url=http://localhost:4566 s3 mb s3://curated``
 
-#### 2. Créer la base MySQL (inclut dans le script 'preprocess_to_staging')
+#### 2. Base MySQL : Se crée ou se met à jour via 'preprocess_to_staging.py'
 
-#### 3. Créer la base MongoDB (MongoDB se crée à l’insertion dans 'process_to_curated').
+#### 3. Base MongoDB : Se crée à l’insertion via 'process_to_curated.py'
 
 
-### 4.5. Exécuter les scripts d’ingestion
+### 5. Exécution Manuelle des Scripts
+---
+Si vous souhaitez exécuter chaque script individuellement (hors Airflow) :
+
 #### 1. unpack_to_raw.py 
-``python build/unpack_to_raw.py --output-dir local_dataset/raw --upload-s3``
+``python build/unpack_to_raw_v.py --output-dir local_dataset/raw --upload-s3``
+
+Télécharge les CSV depuis Kaggle, les combine, et les téléverse dans **s3://raw**.
 
 #### 2. preprocess_to_staging.py
-``python3 src/preprocess_to_staging.py --endpoint-url http://localhost:4566 --bucket_raw raw --file-name bigtech_combined.csv --bucket_staging staging --s3_key bigtech_staging.csv --db_host localhost --db_user root --db_password root --db_database staging``
+``python src/preprocess_to_staging.py \
+  --endpoint-url http://localhost:4566 \
+  --bucket_raw raw \
+  --file-name bigtech_combined.csv \
+  --bucket_staging staging \
+  --s3_key bigtech_staging.csv \
+  --db_host localhost \
+  --db_user root \
+  --db_password root \
+  --db_database staging``
+
+Nettoie, insère les données dans **MySQL** et sauvegarde un CSV dans **s3://staging**.
 
 #### 3. process_to_curated.py
-``python3 src/process_to_curated.py --bucket_staging staging --bucket_curated curated --input_file bigtech_staging.csv --output_file bigtech_curated.parquet --model_name bert-base-uncased --mongo_uri mongodb://localhost:27017/ --mongo_db bigtech_db --mongo_collection tweets`` 
+``python src/process_to_curated2.py \
+--mysql_host localhost \
+--mysql_user root \
+--mysql_password root \
+--mysql_database staging \
+--bucket_curated curated \
+--output_file bigtech_curated.parquet \
+--model_name bert-base-uncased \
+--mongo_uri mongodb://localhost:27017/ \
+--mongo_db bigtech_db --mongo_collection tweets`` 
 
-(Insère les données finalisées dans MongoDB.)
+Tokenise les tweets, applique des transformations avancées, insère les données dans **MongoDB** et téléverse un Parquet dans **s3://curated**.
+
+# 6. Orchestration via Airflow
+---
+### Configuration d’Airflow
+- Le service **airflow** est configuré dans le Docker Compose.
+- Configurez votre **AIRFLOW_HOME**, placez votre DAG dans le dossier dags/, et démarrez Airflow :\\
+``docker-compose up -d airflow-webserver airflow-scheduler``
+- Ensuite, accédez à l’interface Airflow sur ``http://localhost:8080``
 
 
-### 4.6. Lancer l’API Gateway
+# 7. Lancer l’API Gateway
+---
+Une fois les données ingérées, vous pouvez lancer l’API Gateway pour les consulter :\\
+
 ``uvicorn api:app --reload --host 0.0.0.0 --port 8000``
 
-Ensuite, ouvrez http://localhost:8000/docs pour accéder à l’interface Swagger.
+Ensuite, ouvrez ``http://localhost:8000/docs`` pour accéder à l’interface Swagger.
 
 
-# 5. Utilisation
+# 8. Utilisation de l'API
 ---
 - **Endpoint /raw** :
-Retourne les tweets bruts depuis le bucket S3 (LocalStack). Paramètre limit possible.
+Retourne les tweets bruts depuis ``s3://raw``. Paramètre **limit** possible.
+On a par exemple : ``http://localhost:8000/raw?limit=10``
 
 - **Endpoint /staging** :
 Retourne les tweets en base MySQL (possibilité de filtrer par date, sentiment, etc.).
@@ -123,25 +169,23 @@ Vérifie la connectivité à S3, MySQL et MongoDB.
 - **Endpoint /stats** :
 Fournit des métriques sur le nombre de lignes/objets dans chaque couche (Raw, Staging, Curated).
 
-### Exemple de requête via navigateur
-``http://localhost:8000/raw?limit=10``
-ou test via Swagger UI :
-``http://localhost:8000/docs``
 
+# 9. Conclusion
+---
+Cette solution met en place un pipeline complet pour l’ingestion de tweets BigTech, leur prétraitement et leur exposition via une API unifiée, tout en étant orchestré par Airflow. Elle repose sur :
 
-# 6. Conclusion
-Cette solution met en place un pipeline complet pour l’ingestion de tweets BigTech, leur prétraitement et leur exposition via une API unifiée. Elle repose sur :
-
-- LocalStack (S3) pour la couche Raw,
-- MySQL pour la couche Staging,
-- MongoDB pour la couche Curated,
-- FastAPI pour l’API Gateway.
+- **LocalStack** (S3) pour la couche Raw,
+- **MySQL** pour la couche Staging,
+- **MongoDB** pour la couche Curated,
+- **FastAPI** pour l’API Gateway.
+- **Airflow** pour la gestion et l’automatisation du pipeline.
 
 ### Points Forts
-- Architecture modulaire, facile à étendre.
-- Scripts Python autonomes pour chaque étape.
-- Documentation Swagger auto-générée.
+- Architecture modulaire, facile à étendre ou remplacer certains composants.
+- Scripts Python autonomes pour chaque étape, facilitant la maintenance.
+- Documentation Swagger auto-générée via FastAPI.
+- Orchestration et reproductibilité grâce à Airflow.
 
 ### Prochaines étapes
 - Optimiser la gestion des volumes de données (batching, partitions).
-- Mettre en place un orchestrateur (Airflow, DVC, etc.) pour automatiser le pipeline.
+- Sécuriser l’API (authentification, autorisations).
