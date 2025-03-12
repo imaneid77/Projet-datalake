@@ -11,25 +11,32 @@ Enfin, un pipeline Airflow assure l’automatisation et la reproductibilité de 
 # 2. Architecture Générale
 ---
 ### 1. Couche Raw
-Les données brutes (tweets) sont stockées dans un bucket S3 aws simulé par **LocalStack** pour l’environnement de développement.\\
+Les données brutes (tweets) sont stockées dans un bucket S3 aws simulé par **LocalStack** pour l’environnement de développement.
+
 Le script ``unpack_to_raw.py`` récupère les CSV depuis Kaggle (via kagglehub) et les téléverse dans ce bucket.
 
 ### 2. Couche Staging
-Les données nettoyées sont insérées dans une base **MySQL** pour une première structuration.\\
+Les données nettoyées sont insérées dans une base **MySQL** pour une première structuration.
+
 Le script ``preprocess_to_staging.py`` nettoie et transforme les données avant de les charger dans MySQL (et éventuellement dans un bucket **staging**).
 
 
 ### 3. Couche Curated
-Les dernières transformations sont appliquées aux données finales : enrichissement, tokenisation (via un modèle BERT), etc. Ces données sont ensuite stockées dans MongoDB pour plus de souplesse.\\
+Les dernières transformations sont appliquées aux données finales : enrichissement, tokenisation (via un modèle BERT), etc. Ces données sont ensuite stockées dans MongoDB pour plus de souplesse.
+
 Le script ``process_to_curated.py`` réalise ces étapes et téléverse également un fichier Parquet final dans le bucket **curated**.
 
 
 ### 4. API Gateway
 On a également mis à disposition un service **FastAPI** qui expose différents endpoints :
-**/raw** : retourne les données brutes (CSV sur S3).\\
-**/staging** : retourne les données staging (MySQL).\\
-**/curated** : retourne les données finales (MongoDB).\\
-**/health** : vérifie la santé du service (connectivité S3, MySQL, MongoDB).\\
+**/raw** : retourne les données brutes (CSV sur S3).
+
+**/staging** : retourne les données staging (MySQL).
+
+**/curated** : retourne les données finales (MongoDB).
+
+**/health** : vérifie la santé du service (connectivité S3, MySQL, MongoDB).
+
 **/stats** : fournit quelques métriques (par exemple, le nombre de lignes par couche).
 
 ### 5. Orchestration (Airflow)
@@ -70,13 +77,13 @@ Airflow planifie et exécute les scripts selon un DAG. Chaque tâche correspond 
 
 
 ### 4.2. Installer les dépendances
-``pip install -r requirements.txt``
+```pip install -r requirements.txt```
 
 (On doit s'assurer que ``requirements.txt`` contienne fastapi, uvicorn, boto3, mysql-connector-python, pymongo, pandas, emoji, transformers, scikit-learn, apache-airflow, etc.)
 
 
 ### 4.3. Lancer les services Docker 
-Lancer le fichier **docker-compose.yml** : ``docker-compose up -d``
+Lancer le fichier **docker-compose.yml** : ```docker-compose up -d```
 
 Vérifiez que : 
 - LocalStack écoute sur ``http://localhost:4566``
@@ -87,9 +94,11 @@ Vérifiez que :
 
 ### 4.4. Créer les buckets et initialiser les bases
 #### 1. Buckets S3 “raw”, “staging”, “curated” sur LocalStack 
-``aws --endpoint-url=http://localhost:4566 s3 mb s3://raw``
-``aws --endpoint-url=http://localhost:4566 s3 mb s3://staging``
-``aws --endpoint-url=http://localhost:4566 s3 mb s3://curated``
+- ```aws --endpoint-url=http://localhost:4566 s3 mb s3://raw```
+
+- ```aws --endpoint-url=http://localhost:4566 s3 mb s3://staging```
+
+- ```aws --endpoint-url=http://localhost:4566 s3 mb s3://curated```
 
 #### 2. Base MySQL : Se crée ou se met à jour via 'preprocess_to_staging.py'
 
@@ -101,35 +110,39 @@ Vérifiez que :
 Si vous souhaitez exécuter chaque script individuellement (hors Airflow) :
 
 #### 1. unpack_to_raw.py 
-``python build/unpack_to_raw_v.py --output-dir local_dataset/raw --upload-s3``
+```python build/unpack_to_raw_v.py --output-dir local_dataset/raw --upload-s3```
 
 Télécharge les CSV depuis Kaggle, les combine, et les téléverse dans **s3://raw**.
 
 #### 2. preprocess_to_staging.py
-``python src/preprocess_to_staging.py \
-  --endpoint-url http://localhost:4566 \
-  --bucket_raw raw \
-  --file-name bigtech_combined.csv \
-  --bucket_staging staging \
-  --s3_key bigtech_staging.csv \
-  --db_host localhost \
-  --db_user root \
-  --db_password root \
-  --db_database staging``
+```
+python src/preprocess_to_staging.py \
+    --endpoint-url http://localhost:4566 \
+    --bucket_raw raw \
+    --file-name bigtech_combined.csv \
+    --bucket_staging staging \
+    --s3_key bigtech_staging.csv \
+    --db_host localhost \
+    --db_user root \
+    --db_password root \
+    --db_database staging
+```
 
 Nettoie, insère les données dans **MySQL** et sauvegarde un CSV dans **s3://staging**.
 
 #### 3. process_to_curated.py
-``python src/process_to_curated2.py \
---mysql_host localhost \
---mysql_user root \
---mysql_password root \
---mysql_database staging \
---bucket_curated curated \
---output_file bigtech_curated.parquet \
---model_name bert-base-uncased \
---mongo_uri mongodb://localhost:27017/ \
---mongo_db bigtech_db --mongo_collection tweets`` 
+```
+python src/process_to_curated2.py \
+    --mysql_host localhost \
+    --mysql_user root \
+    --mysql_password root \
+    --mysql_database staging \
+    --bucket_curated curated \
+    --output_file bigtech_curated.parquet \
+    --model_name bert-base-uncased \
+    --mongo_uri mongodb://localhost:27017/ \
+    --mongo_db bigtech_db --mongo_collection tweets
+```
 
 Tokenise les tweets, applique des transformations avancées, insère les données dans **MongoDB** et téléverse un Parquet dans **s3://curated**.
 
@@ -137,16 +150,17 @@ Tokenise les tweets, applique des transformations avancées, insère les donnée
 ---
 ### Configuration d’Airflow
 - Le service **airflow** est configuré dans le Docker Compose.
-- Configurez votre **AIRFLOW_HOME**, placez votre DAG dans le dossier dags/, et démarrez Airflow :\\
-``docker-compose up -d airflow-webserver airflow-scheduler``
+- Configurez votre **AIRFLOW_HOME**, placez votre DAG dans le dossier dags/, et démarrez Airflow :
+
+```docker-compose up -d airflow-webserver airflow-scheduler```
 - Ensuite, accédez à l’interface Airflow sur ``http://localhost:8080``
 
 
 # 7. Lancer l’API Gateway
 ---
-Une fois les données ingérées, vous pouvez lancer l’API Gateway pour les consulter :\\
+Une fois les données ingérées, vous pouvez lancer l’API Gateway pour les consulter :
 
-``uvicorn api:app --reload --host 0.0.0.0 --port 8000``
+```uvicorn api:app --reload --host 0.0.0.0 --port 8000```
 
 Ensuite, ouvrez ``http://localhost:8000/docs`` pour accéder à l’interface Swagger.
 
