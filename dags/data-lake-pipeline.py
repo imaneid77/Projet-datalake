@@ -11,21 +11,18 @@ except ImportError:
     print("Le module SimpleHttpOperator n'est pas disponible. Vérifiez votre installation.")
 
 
-# Ajouter le bon chemin pour Airflow
+
 sys.path.insert(0, "/opt/airflow/scripts")  # Chemin dans Docker pour les scripts
 sys.path.insert(0, "/opt/airflow/build")    # Chemin dans Docker pour build
 
 from preprocess_to_staging import main as preprocess_main
-from process_to_curated import process_to_curated as process_main
-#from unpack_to_raw_v import main as unpack_main
-from unpack_to_raw_test import unpack_pipeline
+from process_to_curated2 import process_to_curated as process_main
+from unpack_to_raw_v import unpack_pipeline
 
 from airflow.providers.elasticsearch.log.es_task_handler import ElasticsearchTaskHandler
 from airflow.hooks.base import BaseHook
 from datetime import datetime, timedelta
-#from scripts.preprocess_to_staging import main as preprocess_main
-#from scripts.process_to_curated2 import main as process_main
-#from build.unpack_to_raw_v import main as unpack_main
+
 
 default_args = {
     'owner': 'airflow',
@@ -54,11 +51,11 @@ def log_failure_to_elasticsearch(context):
         es_handler = ElasticsearchTaskHandler(
             base_log_folder="/opt/airflow/logs",
             end_of_log_mark="end_of_log",
-            write_stdout=False,       # ou True, selon ton besoin
+            write_stdout=False,       
             json_format=True,
             json_fields=["asctime", "filename", "lineno", "levelname", "message"],
-            write_to_es=False,        # ou True, si tu veux vraiment écrire dans ES
-            host="http://elasticsearch:9200"  # ou un autre host
+            write_to_es=False,        
+            host="http://elasticsearch:9200"  
         )
 
         es_handler.log.info(log_msg)
@@ -87,15 +84,6 @@ dag = DAG(
     #dag=dag,
 #)
 
-# Il faut attendre la présence des données dans RAW
-#wait_for_raw_data = FileSensor(
- #   task_id='wait_for_raw_data',
-  #  filepath='/opt/airflow/data/raw/bigtech_combined.csv',  # 📌 Modifier si nécessaire
-   # poke_interval=60,
-    #timeout=600, 
-    #mode='poke',
-    #dag=dag,
-#)
 
 #raw
 extract_task = PythonOperator(
@@ -105,8 +93,8 @@ extract_task = PythonOperator(
         'kaggle_dataset': 'wjia26/big-tech-companies-tweet-sentiment',
         'mysql_conn_str': 'mysql+mysqlconnector://root:root@mysql:3306/staging',
         'table_name': 'tweets_staging',
-        'endpoint_url': 'http://localstack:4566',  # None si tu ne veux pas S3
-        's3_bucket': 'raw',                       # None si tu ne veux pas S3
+        'endpoint_url': 'http://localstack:4566',  
+        's3_bucket': 'raw',                       
         's3_key_prefix': 'bigtech_chunk',
         'chunk_size': 20_000
     },
@@ -150,6 +138,5 @@ load_task = PythonOperator(
 
 #ordre des tâches
 #check_elasticsearch >> wait_for_raw_data
-#wait_for_raw_data >> extract_task
 extract_task >> transform_task
 transform_task >> load_task
